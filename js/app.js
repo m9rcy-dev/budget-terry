@@ -154,6 +154,7 @@ class AppController {
 
   init() {
     console.log("App Started.");
+    this.displayCurrentMonth();
     this.setupEventListeners();
     this.view.displayBudget({ budget: 0, totalInc: 0, totalExp: 0, percentage: -1 });
   }
@@ -197,6 +198,22 @@ class AppController {
     const budget = this.model.getBudget();
     this.view.displayBudget(budget);
   }
+
+  displayCurrentMonth() {
+    const now = new Date();
+    
+    // Configures the format to show the full name of the month and the year
+    const options = {
+        month: 'long',
+        year: 'numeric'
+    };
+
+    // Example output: "October 2023"
+    const dateString = now.toLocaleDateString('en-US', options);
+
+    // Select the span and update the text
+    document.querySelector('.budget__title--month').textContent = dateString;
+}
 }
 
 // Global Initialization
