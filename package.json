@@ -23,8 +23,11 @@
       "@nestjs/core",
       "@prisma/client",
       "@prisma/engines",
+      "cpu-features",
       "esbuild",
-      "prisma"
+      "prisma",
+      "protobufjs",
+      "ssh2"
     ]
   },
   "devDependencies": {

@@ -13,5 +13,5 @@
     "noImplicitAny": true,
     "strictBindCallApply": true
   },
-  "include": ["src"]
+  "include": ["src", "test", "prisma"]
 }
