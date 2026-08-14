@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Turborepo (not in use yet, harmless to ignore ahead of time)
+.turbo/
+
+# Expo / React Native
+.expo/
+.expo-shared/
+ios/
+android/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Test / coverage
+coverage/
+
+# Prisma
+apps/api/prisma/migrations/dev.db*
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Vercel
+.vercel/

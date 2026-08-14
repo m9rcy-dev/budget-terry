@@ -1,0 +1,13 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Domain models (User, Account, Transaction, Budget, Bill, Goal, ...) are
+// introduced in Phase 2 — Database Foundation. See docs/adr/ADR-002 and
+// docs/adr/ADR-003 for the conventions they must follow (userId on every
+// table, integer minor units for money).
