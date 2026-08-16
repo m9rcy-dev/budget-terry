@@ -2,9 +2,13 @@ import { render, screen } from "@testing-library/react-native";
 import HomeScreen from "./index";
 
 const mockReplace = jest.fn();
-jest.mock("expo-router", () => ({
-  useRouter: () => ({ replace: mockReplace }),
-}));
+jest.mock("expo-router", () => {
+  const { Text } = jest.requireActual("react-native");
+  return {
+    useRouter: () => ({ replace: mockReplace }),
+    Link: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
+  };
+});
 
 const mockLogout = jest.fn();
 const mockUseAuth = jest.fn();

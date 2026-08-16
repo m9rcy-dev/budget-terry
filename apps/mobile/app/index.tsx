@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../lib/auth-context";
 
@@ -23,6 +23,14 @@ export default function HomeScreen() {
       <Text style={styles.subtitle}>
         Logged in as {user.displayName} ({user.email})
       </Text>
+      <View style={styles.nav}>
+        <Link href="/accounts" style={styles.navLink}>
+          Accounts
+        </Link>
+        <Link href="/categories" style={styles.navLink}>
+          Categories
+        </Link>
+      </View>
       <Pressable
         style={styles.button}
         onPress={async () => {
@@ -60,4 +68,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonText: { color: "#fff", fontWeight: "600" },
+  nav: { flexDirection: "row", gap: 16 },
+  navLink: { textDecorationLine: "underline" },
 });

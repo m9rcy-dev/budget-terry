@@ -11,69 +11,69 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import type { Category } from "@prisma/client";
+import type { Account } from "@prisma/client";
 import {
-  createCategorySchema,
-  updateCategorySchema,
-  type CreateCategoryInput,
-  type UpdateCategoryInput,
+  createAccountSchema,
+  updateAccountSchema,
+  type CreateAccountInput,
+  type UpdateAccountInput,
 } from "@budget-terry/validation";
 import { CurrentUser } from "../auth/current-user.decorator";
 import type { AccessTokenPayload } from "../auth/token.service";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
-import { CategoriesService } from "./categories.service";
+import { AccountsService } from "./accounts.service";
 
-@Controller("categories")
-export class CategoriesController {
-  constructor(private readonly categoriesService: CategoriesService) {}
+@Controller("accounts")
+export class AccountsController {
+  constructor(private readonly accountsService: AccountsService) {}
 
   @Get()
   list(
     @CurrentUser() user: AccessTokenPayload,
     @Query("includeArchived") includeArchived?: string,
-  ): Promise<Category[]> {
-    return this.categoriesService.findAllForUser(user.sub, includeArchived === "true");
+  ): Promise<Account[]> {
+    return this.accountsService.findAllForUser(user.sub, includeArchived === "true");
   }
 
   @Get(":id")
   findOne(
     @CurrentUser() user: AccessTokenPayload,
     @Param("id", ParseUUIDPipe) id: string,
-  ): Promise<Category> {
-    return this.categoriesService.findOneForUser(user.sub, id);
+  ): Promise<Account> {
+    return this.accountsService.findOneForUser(user.sub, id);
   }
 
   @Post()
   create(
     @CurrentUser() user: AccessTokenPayload,
-    @Body(new ZodValidationPipe(createCategorySchema)) body: CreateCategoryInput,
-  ): Promise<Category> {
-    return this.categoriesService.create(user.sub, body);
+    @Body(new ZodValidationPipe(createAccountSchema)) body: CreateAccountInput,
+  ): Promise<Account> {
+    return this.accountsService.create(user.sub, body);
   }
 
   @Patch(":id")
   update(
     @CurrentUser() user: AccessTokenPayload,
     @Param("id", ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(updateCategorySchema)) body: UpdateCategoryInput,
-  ): Promise<Category> {
-    return this.categoriesService.update(user.sub, id, body);
+    @Body(new ZodValidationPipe(updateAccountSchema)) body: UpdateAccountInput,
+  ): Promise<Account> {
+    return this.accountsService.update(user.sub, id, body);
   }
 
   @Post(":id/archive")
   archive(
     @CurrentUser() user: AccessTokenPayload,
     @Param("id", ParseUUIDPipe) id: string,
-  ): Promise<Category> {
-    return this.categoriesService.archive(user.sub, id);
+  ): Promise<Account> {
+    return this.accountsService.archive(user.sub, id);
   }
 
   @Post(":id/restore")
   restore(
     @CurrentUser() user: AccessTokenPayload,
     @Param("id", ParseUUIDPipe) id: string,
-  ): Promise<Category> {
-    return this.categoriesService.restore(user.sub, id);
+  ): Promise<Account> {
+    return this.accountsService.restore(user.sub, id);
   }
 
   @Delete(":id")
@@ -82,6 +82,6 @@ export class CategoriesController {
     @CurrentUser() user: AccessTokenPayload,
     @Param("id", ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.categoriesService.remove(user.sub, id);
+    await this.accountsService.remove(user.sub, id);
   }
 }

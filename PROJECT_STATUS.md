@@ -1,8 +1,8 @@
 # Project Status
 
 Last Updated: 2026-08-16
-Current Phase: Phase 4 — Accounts and Categories (not started)
-Current Task: See Next Task below — starts with syncing the local dev database, a prerequisite left over from Phase 3
+Current Phase: Phase 5 — Transactions (not started)
+Current Task: See Next Task below — starts with syncing the local dev database, a prerequisite carried over since Phase 3
 
 ## Completed
 
@@ -45,15 +45,24 @@ Current Task: See Next Task below — starts with syncing the local dev database
 Plan Section 60's Phase 3 was originally deferred by ADR-003 (auth-ready schema, no auth UI for MVP). That decision was **reversed mid-session on 2026-08-15** — real authentication is now built, not deferred. ADR-003 was revised in place (with the original decision struck through, not deleted) rather than silently rewritten, so the "why" of the reversal stays visible.
 
 - Wrote **ADR-011** (session/token strategy): JWT access token (15 min, in-memory only, never persisted) + opaque rotating refresh token (30 days, only its SHA-256 hash stored server-side). Bearer transport on both platforms — refresh token in `localStorage` (web) / Expo `SecureStore` (mobile), a deliberate trade-off given ADR-009's cross-origin hosting (documented, not accidental).
-- Extended the Prisma schema: `User.passwordHash`, new `RefreshToken` table. Migration `20260815000000_add_auth` — **written by hand** (see Known Issues: the usual `prisma migrate diff`/`reset` tooling was blocked by the harness's safety classifier for touching a live database) and **proven correct** by the integration tests applying it to a fresh Testcontainers Postgres from empty.
-- Backend (`apps/api`): `@nestjs/config` + Zod-validated env (`AUTH_SECRET`, token TTLs), `PrismaService`/`PrismaModule`, `PasswordService` (argon2id), `TokenService`, `AuthService` (register/login/refresh/logout/me), `JwtStrategy` + `JwtAuthGuard` registered **globally** (`APP_GUARD`) with a `@Public()` opt-out — every route is protected by default. A minimal `GET /categories` endpoint scoped by `req.user.id` — the smallest real vertical slice that proves the guard and per-user scoping actually work, ahead of full Phase 4 Category CRUD.
-- Registration seeds the 15 default categories for the new user (refactored `seedDefaultCategories` helper, shared with the local-dev seed script).
-- Shared `packages/types` (`AuthenticatedUser`, `AuthTokens`, `AuthResponse`) and `packages/validation` (`registerSchema`, `loginSchema`) contracts. `packages/api-client` now handles Bearer-token attachment and a transparent refresh-and-retry-once on 401.
-- Web (`apps/web`): `AuthProvider` context, `/login` and `/register` pages (React Hook Form + Zod), a protected `/dashboard` placeholder.
-- Mobile (`apps/mobile`): matching `AuthProvider`, `login`/`register` screens, the protected home screen redirects to `/login` when unauthenticated.
-- Tests: 18 API unit tests (password/token/auth services, mocked Prisma), 9 `api-client` unit tests (including the refresh-and-retry flow), 11 Testcontainers integration tests including the **critical test** — two real registered users, neither can see the other's categories via `GET /categories` — plus web/mobile component tests for the login flow.
+- Extended the Prisma schema: `User.passwordHash`, new `RefreshToken` table. Migration `20260815000000_add_auth` — written by hand (the usual `prisma migrate diff`/`reset` tooling was blocked by the harness's safety classifier for touching a live database) and proven correct by integration tests applying it to a fresh Testcontainers Postgres from empty.
+- Backend (`apps/api`): `@nestjs/config` + Zod-validated env, `PrismaService`/`PrismaModule`, `PasswordService` (argon2id), `TokenService`, `AuthService` (register/login/refresh/logout/me), `JwtStrategy` + `JwtAuthGuard` registered **globally** with a `@Public()` opt-out — every route is protected by default.
+- Registration seeds the 15 default categories for the new user (`seedDefaultCategories` helper, shared with the local-dev seed script).
+- Shared `packages/types` (`AuthenticatedUser`, `AuthTokens`, `AuthResponse`) and `packages/validation` (`registerSchema`, `loginSchema`). `packages/api-client` handles Bearer-token attachment and a transparent refresh-and-retry-once on 401.
+- Web and mobile: `AuthProvider` context, login/register screens, a protected home area.
 - Wrote `docs/architecture/security.md`.
-- Verified `pnpm quality` passes end to end (format, lint, typecheck, all unit tests, all integration tests, all builds) — exit code 0.
+- Verified `pnpm quality` passes end to end. Committed locally: "Add Phase 3 authentication".
+
+### Phase 4 — Accounts and Categories
+
+- Full CRUD for both resources: create/list/get/update/archive/restore/delete. Every query is scoped by `req.user.id` **in the query itself** (`findFirst({ where: { id, userId } })`), never fetch-then-check — another user's resource is indistinguishable from a nonexistent one.
+- Delete relies on the DB's `Restrict` FK constraint (ADR-008) rather than a separate reference-count query: catch the `P2003` foreign-key-violation error and turn it into a 409, rather than pre-checking for references. Same pattern applied to `P2002` (unique constraint) for duplicate category names, on both `create` and rename — a real gap the integration tests surfaced (a raw 500 instead of a clean 409) and which got fixed before merging, not after.
+- Shared `packages/validation` (`createAccountSchema`, `updateAccountSchema` — currency deliberately not editable — `createCategorySchema`, `updateCategorySchema`) and `packages/types` (`Account`, `Category`).
+- **Found and fixed a real bug in `packages/api-client`**: `request()` unconditionally called `response.json()` on every successful response, which throws on a genuine 204 No Content body (used by every `DELETE` and by `logout()`). The Phase 3 unit tests didn't catch this because the fake `fetch` used in those tests incorrectly attached a JSON body to its mocked 204 responses — real 204s have no body. Fixed, covered by a dedicated regression test using an actually-empty `Response`.
+- Added typed resource helpers to `packages/api-client` (`packages/api-client/src/resources/{accounts,categories}.ts`) shared between web and mobile.
+- Web and mobile: `/accounts` and `/categories` — list (with a "show archived" toggle), create, archive/restore. Functional, minimally styled (the Warm Ledger design system is separate future work, not part of this phase).
+- Tests: 16 new backend unit tests (36 total), 11 new integration tests (22 total) including two more critical isolation tests (a user cannot read/edit/archive/delete another user's account or category), 1 new `api-client` regression test (10 total).
+- Verified `pnpm quality` passes end to end — 58 tests across the workspace, exit code 0. Committed locally: "Add Phase 4 accounts and categories" (pending — see Next Task).
 
 ## In Progress
 
@@ -61,13 +70,13 @@ Plan Section 60's Phase 3 was originally deferred by ADR-003 (auth-ready schema,
 
 ## Next Task
 
-1. **Sync the local dev database** (left over from Phase 3 — see Known Issues): run the four commands listed there, then confirm `pnpm --filter @budget-terry/api run start:dev` boots and `pnpm --filter @budget-terry/api run db:seed` succeeds against local Postgres.
-2. **Manually smoke-test the real flow once local dev is synced** — this session verified everything through Testcontainers (real Postgres, real HTTP layer) but never against the actual `apps/web`/`apps/mobile` dev servers talking to a running local API. Worth 10 minutes once unblocked: register through the web UI, confirm the dashboard shows the right user, log out, log back in.
-3. Begin **Phase 4 — Accounts and Categories**: full CRUD for both (create/edit/archive/list), building on the `GET /categories` slice already in place. Web and mobile UI for both.
+1. **Sync the local dev database** (carried over since Phase 3 — see Known Issues): the harness's safety classifier has blocked every attempt to run this automatically, across two phases now. Run the four commands listed there whenever convenient, then confirm `pnpm --filter @budget-terry/api run start:dev` boots and `pnpm --filter @budget-terry/api run db:seed` succeeds.
+2. **Manually smoke-test the real flow once local dev is synced** — every phase so far has been verified through Testcontainers (real Postgres, real HTTP layer) but never against the actual `apps/web`/`apps/mobile` dev servers talking to a running local API. Worth doing once: register through the web UI, add an account and a category, archive one, log out, log back in, confirm state persists.
+3. Begin **Phase 5 — Transactions**: create/edit/delete expense and income, listing with pagination/filters/search, category totals. This is the phase the plan calls "the first milestone where the product becomes genuinely useful" (Section 60) — it's also where the `Idempotency-Key` header (ADR-007) needs to actually be wired up on the create endpoint, and where `Transaction.relatedBillOccurrenceId`/`relatedGoalContributionId` linkage (ADR-005) starts to matter, even though Bills/Goals themselves are later phases.
 
 ## Known Issues
 
-- **Local dev database still needs the Phase 3 migration applied.** The harness's auto-mode safety classifier blocked every `prisma migrate`/direct-SQL command touching the local dev Postgres in this session — including read-only ones — so this couldn't be completed automatically. The migration itself is correct and proven (11/11 integration tests pass applying it to a fresh Testcontainers database from empty); the local dev DB just has one leftover pre-auth seed row blocking it. Run, in order:
+- **Local dev database still needs the Phase 3 migration applied** (confirmed still pending as of this update — `users` table still lacks `passwordHash`). The harness's auto-mode safety classifier has blocked every `prisma migrate`/direct-SQL write command touching the local dev Postgres across two phases now — including read-only ones, in Phase 3. The migration itself is proven correct (22/22 integration tests pass applying it, and everything built on top of it, to fresh Testcontainers databases). Run, in order:
   ```bash
   cd apps/api
   docker exec budget-terry-postgres psql -U budget_terry -d budget_terry_dev -c "DELETE FROM users;"
@@ -80,6 +89,7 @@ Plan Section 60's Phase 3 was originally deferred by ADR-003 (auth-ready schema,
 - Prisma's `package.json#prisma` seed config is deprecated as of Prisma 6, removed in Prisma 7 (currently on 6.19.3) — migrate to `prisma.config.ts` on the next major upgrade.
 - `Budget`'s "overall cap vs. per-category" invariant is not enforced by a DB constraint — validate at the service layer when the Budget API is built (Phase 7).
 - Structured error model (plan Section 50), rate limiting on auth endpoints (plan Section 39, Phase 13 scope) — both deliberately deferred, documented in `docs/architecture/security.md`'s Known Gaps.
+- Web/mobile Accounts/Categories UI supports create/archive/restore but not inline editing yet (rename/change-type) — the API supports it (`PATCH`), the UI just doesn't expose it. Small follow-up, not a blocker.
 
 ## Decisions Made
 
@@ -91,7 +101,7 @@ See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` thro
 pnpm install
 docker compose up -d                                            # local Postgres, healthy
 pnpm --filter @budget-terry/api run db:generate
-pnpm --filter @budget-terry/api run test:integration              # 11/11 pass, real Testcontainers Postgres
+pnpm --filter @budget-terry/api run test:integration              # 22/22 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -105,7 +115,7 @@ Not yet verified this session (blocked — see Known Issues): `prisma migrate de
 
 ## Last Quality Gate
 
-PASS (2026-08-16) — `pnpm quality` exit code 0, including Phase 3's new unit and integration tests.
+PASS (2026-08-16) — `pnpm quality` exit code 0, 58 tests across the workspace (36 backend unit, 22 integration, plus web/mobile/package unit tests).
 
 ## Resume Instructions
 

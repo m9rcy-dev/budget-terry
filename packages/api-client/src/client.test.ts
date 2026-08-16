@@ -8,6 +8,11 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+/** A real 204 has no body — .json() on it throws. Don't fake it with one. */
+function emptyResponse(status: number): Response {
+  return new Response(null, { status });
+}
+
 function createMemoryTokenStorage(initial: string | null = null): TokenStorage {
   let refreshToken = initial;
   return {
@@ -126,13 +131,20 @@ describe("ApiClient", () => {
 
   it("logout clears local token state and calls the API best-effort", async () => {
     const tokenStorage = createMemoryTokenStorage("refresh-1");
-    const fetchImpl = vi.fn(async () => jsonResponse(204, {})) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => emptyResponse(204)) as unknown as typeof fetch;
     const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
     client.setAccessToken("access-1");
 
     await client.logout();
 
     expect(await tokenStorage.getRefreshToken()).toBeNull();
+  });
+
+  it("request() resolves a real 204 No Content response without trying to parse a body", async () => {
+    const fetchImpl = vi.fn(async () => emptyResponse(204)) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl });
+
+    await expect(client.request("/accounts/abc", { method: "DELETE" })).resolves.toBeUndefined();
   });
 
   it("restoreSession returns null immediately when there is no stored refresh token", async () => {

@@ -139,6 +139,12 @@ export class ApiClient {
       );
     }
 
+    // A 204 (or any genuinely empty body) has nothing for .json() to
+    // parse — calling it anyway throws. DELETE and logout both return 204.
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     return (await response.json()) as T;
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 
@@ -23,6 +24,10 @@ export default function DashboardPage() {
       <p className="text-lg">
         Logged in as {user.displayName} ({user.email})
       </p>
+      <nav className="flex gap-4 text-sm underline">
+        <Link href="/accounts">Accounts</Link>
+        <Link href="/categories">Categories</Link>
+      </nav>
       <button
         type="button"
         onClick={async () => {
