@@ -67,17 +67,19 @@ enum GoalStatus {
 }
 
 // ---------------------------------------------------------------------------
-// User — single seeded system user for MVP; every table below carries a
-// required userId from day one so multi-user support is additive later,
-// not a migration project. See ADR-003.
+// User — every table below carries a required userId from day one so
+// multi-user support is additive, not a migration project. See ADR-003.
+// Real authentication (ADR-011) resolves "current user" from a verified
+// JWT, not a hardcoded id.
 // ---------------------------------------------------------------------------
 
 model User {
-  id          String   @id @default(uuid()) @db.Uuid
-  email       String   @unique
-  displayName String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  displayName  String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   accounts          Account[]
   categories        Category[]
@@ -87,8 +89,30 @@ model User {
   billOccurrences   BillOccurrence[]
   savingsGoals      SavingsGoal[]
   goalContributions GoalContribution[]
+  refreshTokens     RefreshToken[]
 
   @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// RefreshToken — only the hash is stored, never the token itself. Rotated
+// on every use (a new row is created, the old one is revoked) rather than
+// reused, to limit the damage window if a refresh token ever leaks. See
+// ADR-011.
+// ---------------------------------------------------------------------------
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 // ---------------------------------------------------------------------------

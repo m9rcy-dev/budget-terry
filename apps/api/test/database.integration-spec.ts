@@ -13,7 +13,11 @@ describe("database plumbing", () => {
 
   it("persists a user and a category created for them", async () => {
     const user = await db.prisma.user.create({
-      data: { email: "plumbing-1@example.com", displayName: "Test User" },
+      data: {
+        email: "plumbing-1@example.com",
+        displayName: "Test User",
+        passwordHash: "test-hash",
+      },
     });
 
     const category = await db.prisma.category.create({
@@ -28,7 +32,11 @@ describe("database plumbing", () => {
 
   it("enforces one category name per user (ADR-008-adjacent integrity rule)", async () => {
     const user = await db.prisma.user.create({
-      data: { email: "plumbing-2@example.com", displayName: "Test User" },
+      data: {
+        email: "plumbing-2@example.com",
+        displayName: "Test User",
+        passwordHash: "test-hash",
+      },
     });
 
     await db.prisma.category.create({ data: { userId: user.id, name: "Fuel" } });
@@ -40,7 +48,11 @@ describe("database plumbing", () => {
 
   it("allows multiple transactions with no idempotency key but rejects a repeated key for the same user (ADR-007)", async () => {
     const user = await db.prisma.user.create({
-      data: { email: "plumbing-3@example.com", displayName: "Test User" },
+      data: {
+        email: "plumbing-3@example.com",
+        displayName: "Test User",
+        passwordHash: "test-hash",
+      },
     });
     const account = await db.prisma.account.create({
       data: { userId: user.id, name: "Everyday", type: "EVERYDAY" },
@@ -80,7 +92,11 @@ describe("database plumbing", () => {
 
   it("prevents deleting an account referenced by a transaction (ADR-008 DB-level safety net)", async () => {
     const user = await db.prisma.user.create({
-      data: { email: "plumbing-4@example.com", displayName: "Test User" },
+      data: {
+        email: "plumbing-4@example.com",
+        displayName: "Test User",
+        passwordHash: "test-hash",
+      },
     });
     const account = await db.prisma.account.create({
       data: { userId: user.id, name: "Everyday", type: "EVERYDAY" },

@@ -10,5 +10,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@budget-terry/types": "workspace:*",
+    "@budget-terry/validation": "workspace:*"
   }
 }

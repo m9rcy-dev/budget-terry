@@ -1,53 +1,31 @@
+import * as argon2 from "argon2";
 import { PrismaClient } from "@prisma/client";
+import { seedDefaultCategories } from "../src/categories/default-categories";
 
 const prisma = new PrismaClient();
 
 /**
- * Fixed id for the single seeded system user MVP resolves "current user"
- * to (ADR-003). Real auth will replace how this id is resolved, not the
- * schema, so keeping it a stable constant matters.
+ * Local dev convenience only — never a production credential. Log in with
+ * this email/password after `pnpm db:seed` to explore the app without
+ * registering a real account. Real auth (ADR-011) makes this just a
+ * normal user row, not a special-cased "current user".
  */
-export const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
-
-const DEFAULT_CATEGORY_NAMES = [
-  "Mortgage / Rent",
-  "Groceries",
-  "Restaurants",
-  "Utilities",
-  "Electricity",
-  "Internet",
-  "Transport",
-  "Fuel",
-  "Insurance",
-  "Health",
-  "Entertainment",
-  "Shopping",
-  "Travel",
-  "Subscriptions",
-  "Miscellaneous",
-];
+const DEV_EMAIL = "dev@budgetterry.local";
+const DEV_PASSWORD = "dev-password-please-change";
 
 async function main(): Promise<void> {
+  const passwordHash = await argon2.hash(DEV_PASSWORD, { type: argon2.argon2id });
+
   const user = await prisma.user.upsert({
-    where: { id: SYSTEM_USER_ID },
+    where: { email: DEV_EMAIL },
     update: {},
-    create: {
-      id: SYSTEM_USER_ID,
-      email: "you@budgetterry.local",
-      displayName: "Budget Terry",
-    },
+    create: { email: DEV_EMAIL, displayName: "Dev Account", passwordHash },
   });
 
-  for (const name of DEFAULT_CATEGORY_NAMES) {
-    await prisma.category.upsert({
-      where: { userId_name: { userId: user.id, name } },
-      update: {},
-      create: { userId: user.id, name },
-    });
-  }
+  await seedDefaultCategories(prisma, user.id);
 
   console.warn(
-    `Seeded system user (${user.email}) and ${DEFAULT_CATEGORY_NAMES.length} default categories.`,
+    `Seeded dev account: ${DEV_EMAIL} / ${DEV_PASSWORD} (local dev only — never use in production) plus default categories.`,
   );
 }
 
