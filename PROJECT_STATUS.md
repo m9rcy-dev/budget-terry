@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-19
-Current Phase: Phase 7 — Budgets (not started)
+Current Phase: Phase 7 — Budgets (complete)
 Current Task: See Next Task below
 
 ## Completed
@@ -100,13 +100,27 @@ The first phase that turns raw CRUD (Phases 4–5) into the "useful answers" the
 - Tests: 5 new backend unit tests (50 total), 4 new integration tests (34 total) including a critical isolation test and a default-period test. Mobile gained its first test covering real fetched data rendering (previously only auth-state rendering was tested), fixing an `act()` warning properly (an explicit `waitFor` on the mock call) rather than suppressing it.
 - Verified `pnpm quality` passes end to end — exit code 0, 127 tests total. Booted `apps/api` against the real local database mid-verification and confirmed `/dashboard/summary` correctly picked up the actual transactions created during Phase 5's own smoke test — real data, not fixtures. Committed locally: "Add Phase 6 dashboard" (pending — see below).
 
+### Phase 7 — Budgets
+
+The plan's Section 4 budgeting feature: an "overall cap or per-category" budget, tracked against a configurable, payday-anchored period (ADR-006), with live spend/remaining/status computed on read.
+
+- `budget-period.ts` — the algorithmically tricky piece, isolated and unit-tested on its own: `computeCurrentPeriod(period, anchorDate, referenceDate)` walks forward from `anchorDate` in whole period-lengths (WEEKLY=7d/FORTNIGHTLY=14d via integer day-division, MONTHLY via integer month arithmetic with day-of-month clamping) — deliberately not calendar-aligned, matching a real payday cadence. 15 unit tests, including end-of-month clamping (31st anchor landing in Feb, both leap and non-leap years) and a full-year walk-forward drift check.
+- `BudgetsService`: create/list/get/update/delete, all ownership-scoped (`findFirst({ id, userId })`, same pattern as every other resource). The overall-vs-per-category XOR invariant (ADR-002/ADR-006 note) isn't DB-enforced — validated at the Zod layer (`createBudgetSchema`'s `superRefine`, also rejecting duplicate `categoryId`s) and re-verified in the service. Status/spend/remaining/percentage are **computed on read, never stored** (same principle as Phase 2's bill-status ADR-010) — a small `attachStatus` step branches on overall vs. per-category and calls `prisma.transaction.aggregate` (income deliberately excluded from "spent"). `update` uses a `$transaction` to `deleteMany` the old `BudgetCategory` rows and `create` new ones — full-replace semantics, not a merge.
+- Category allocations reuse `CategoriesService.findOneForUser` for ownership verification — allocating another user's category correctly 404s, not 403 (consistent with how every other cross-resource reference is guarded).
+- Shared `packages/validation` (`createBudgetSchema`/`updateBudgetSchema`, the XOR `superRefine`) and `packages/types` (`Budget`, `BudgetCategoryStatus`, `BudgetStatus`). `packages/api-client` gained typed resource helpers.
+- Web `/budgets`: list showing a status bar per budget (or per category, for per-category budgets) — color plus an explicit text label ("Healthy"/"Approaching limit"/"Over budget"), never color alone, per plan Section 54's accessibility guidance. Create form toggles overall vs. per-category; edit reuses the same form pre-populated (since update is full-replace, this maps naturally); delete.
+- Mobile `/budgets`: the same overall/per-category toggle and status bars, adapted to a chip-based picker (tap a category to include it, then an amount field appears) rather than a full form, matching the mobile-quick-entry pattern established in Phase 5.
+- Tests: 17 new backend unit tests for `BudgetsService` (82 total) plus 15 for `budget-period` (counted above), 8 new integration tests (42 total) covering overall spend calculation, per-category spend calculation (proving another category's spending doesn't bleed in), both XOR rejection cases, foreign-category-ownership rejection, edit-replaces-allocations, delete, and a critical isolation test.
+- Caught and fixed two bugs before they shipped: a TS2502 "referenced in its own type annotation" error in the service spec caused by a `$transaction` mock callback parameter shadowing the outer `tx` const of the same name (renamed the parameter); and two `it.each` boundary-value test cases that were arithmetically wrong (79999/100000 asserted as `APPROACHING` when it's actually `HEALTHY` at 79.999%) — fixed by using clean round percentages that don't hit rounding ambiguity.
+- Verified `pnpm quality` passes end to end — exit code 0, 173 tests total (131 unit + 42 integration). Booted `apps/api` against the real local database mid-verification and smoke-tested the full budget lifecycle with `curl`: overall budget creation, live spend/remaining/status after adding a real expense transaction, per-category XOR budget creation, the 400 rejection when both `totalAmountMinorUnits` and `categoryAllocations` are sent, and delete → 404. Also booted `apps/web` and confirmed `/budgets` compiles and serves 200. Committed locally: "Add Phase 7 budgets".
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Begin **Phase 7 — Budgets**: create budget (overall or per-category, per plan Section 4), budget-period calculation using `Budget.period`/`anchorDate` (ADR-006 — this is where the dashboard's calendar-month placeholder should be revisited and possibly aligned with the user's real budget period), spending-against-budget, remaining amount, percentage used, budget warnings (healthy/approaching/exceeded), web + mobile budget UI. Note ADR-002's Budget schema decision: an "overall cap vs. per-category" invariant isn't DB-enforced — validate it at the service layer now that this phase actually builds against it.
+Phase 7 is complete. Re-read plan Section 60 for what Phase 8 covers next (Bills, per the plan's phase ordering) before starting: Bill/BillOccurrence CRUD, occurrence generation from a recurrence rule, status computed at read time (ADR-010 already covers the "not stored" decision — this phase is where it actually gets built against), linking a paid occurrence to a Transaction (ADR-005), web + mobile UI.
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
@@ -118,7 +132,7 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - Structured error model (plan Section 50), rate limiting on auth endpoints (plan Section 39, Phase 13 scope) — both deliberately deferred, documented in `docs/architecture/security.md`'s Known Gaps.
 - Web/mobile Accounts/Categories UI supports create/archive/restore but not inline editing yet (rename/change-type) — the API supports it (`PATCH`), the UI just doesn't expose it. Small follow-up, not a blocker.
 - Web/mobile Transactions UI doesn't expose changing which account/category a transaction belongs to during edit (only amount/merchant on web; mobile has no edit UI at all, by design — see Phase 5 above). The API supports full edits.
-- Dashboard's "current period" is a calendar-month placeholder, not tied to any real budget period — see Next Task, this is exactly what Phase 7 should resolve.
+- Dashboard's "current period" is still a calendar-month placeholder (Phase 6), not aligned to a user's real budget period now that Phase 7 has one — small follow-up to make the dashboard period-aware, not a blocker.
 
 ## Decisions Made
 
@@ -134,7 +148,13 @@ curl http://localhost:3001/health                                 # {"status":"o
 curl -X POST http://localhost:3001/auth/login ...                 # real login against local DB, works
 curl http://localhost:3001/dashboard/summary ...                  # correct income/expenses/net/categories,
                                                                     # picked up real transactions from Phase 5's own smoke test
-pnpm --filter @budget-terry/api run test:integration               # 34/34 pass, real Testcontainers Postgres
+curl -X POST http://localhost:3001/budgets ... totalAmountMinorUnits  # overall budget, live spend/remaining/status after a real expense
+curl -X POST http://localhost:3001/budgets ... categoryAllocations    # per-category budget, correct XOR fields (overall fields null)
+curl -X POST http://localhost:3001/budgets ... both fields set        # 400, rejected by Zod superRefine
+curl -X DELETE http://localhost:3001/budgets/:id                      # 204, then GET same id -> 404
+pnpm --filter @budget-terry/api run start:dev                     # /budgets routes mapped, boots cleanly with BudgetsModule
+pnpm --filter @budget-terry/web run dev                           # /budgets compiles, GET returns 200
+pnpm --filter @budget-terry/api run test:integration               # 42/42 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -146,7 +166,7 @@ pnpm quality        # PASS, exit code 0
 
 ## Last Quality Gate
 
-PASS (2026-08-19) — `pnpm quality` exit code 0, 127 tests across the workspace (93 unit + 34 integration). Also verified by actually running `apps/api` against the real local database mid-phase and confirming `/dashboard/summary` reflected real prior data correctly — not just tests/build passing.
+PASS (2026-08-19) — `pnpm quality` exit code 0, 173 tests across the workspace (131 unit + 42 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing the full budget lifecycle with `curl`, and by booting `apps/web` and confirming `/budgets` serves 200 — not just tests/build passing.
 
 ## Resume Instructions
 

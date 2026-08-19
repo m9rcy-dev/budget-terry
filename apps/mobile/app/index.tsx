@@ -49,6 +49,9 @@ export default function HomeScreen() {
         <Link href="/categories" style={styles.navLink}>
           Categories
         </Link>
+        <Link href="/budgets" style={styles.navLink}>
+          Budgets
+        </Link>
       </View>
 
       {summary && (

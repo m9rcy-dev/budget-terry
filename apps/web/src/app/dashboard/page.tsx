@@ -51,6 +51,7 @@ export default function DashboardPage() {
           <Link href="/transactions">Transactions</Link>
           <Link href="/accounts">Accounts</Link>
           <Link href="/categories">Categories</Link>
+          <Link href="/budgets">Budgets</Link>
         </nav>
       </div>
 
