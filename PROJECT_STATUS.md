@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-19
-Current Phase: Phase 5 — Transactions (not started)
+Current Phase: Phase 6 — Dashboard V1 (not started)
 Current Task: See Next Task below
 
 ## Completed
@@ -72,15 +72,30 @@ Plan Section 60's Phase 3 was originally deferred by ADR-003 (auth-ready schema,
 - Re-ran `pnpm quality` after the fix — still exit code 0, 92 tests total across the workspace.
 - Takeaway worth remembering: **passing tests and a passing `build` step do not prove an app actually runs** — `nest build` only compiles, Jest has its own module resolution distinct from Node's. Actually booting the dev server periodically (not just at the very end of a phase) would have caught this sooner.
 
+### Phase 5 — Transactions
+
+The plan calls this "the first milestone where the product becomes genuinely useful" (Section 60) — the app can now actually track money.
+
+- Full CRUD for `Transaction`: create (expense/income — `TRANSFER` deliberately excluded, per ADR-005/plan Section 18, until transfers get dedicated linked-entry handling later), list with pagination + filters (account/category/type/date range) + search (merchant/description, case-insensitive), get one, edit, delete. Creating or editing a transaction verifies the referenced account/category actually belongs to the caller (reuses `AccountsService`/`CategoriesService.findOneForUser`, now exported from their modules) — the same ownership-in-the-query pattern as Phase 4, extended to a resource that references two others.
+- **`Idempotency-Key` (ADR-007) is now actually wired up**, not just designed: the header is read on `POST /transactions`, checked against the existing `(userId, idempotencyKey)` unique constraint before creating, and a concurrent-race fallback (catch the `P2002`, re-fetch, return the winner) handles two requests with the same key arriving at once. Verified for real against the live local API, not just integration tests: two identical `curl` requests with the same `Idempotency-Key` returned the identical transaction id.
+- `GET /transactions/category-totals` — `groupBy` on `EXPENSE` transactions within a date range, joined with category names, with an explicit "Uncategorized" bucket for transactions with no category (rather than silently dropping them).
+- Route ordering matters and is easy to get wrong: `category-totals` must be registered before the `:id` route or Express matches it as an id first (`ParseUUIDPipe` would then reject it) — got this right, noted in a comment so it doesn't regress.
+- Shared `packages/validation` (`createTransactionSchema`, `updateTransactionSchema`, `listTransactionsQuerySchema`, `categoryTotalsQuerySchema`) and `packages/types` (`Transaction`, `PaginatedResult<T>`, `CategoryTotal`). `packages/api-client` gained typed resource helpers including query-string building for filters.
+- Web: `/transactions` — create form (expense/income toggle, account/category pickers, dollar-amount input converted to minor units client-side, date, merchant), filterable/paginated list, inline amount edit, delete.
+- Mobile: `/transactions` — a quick-entry flow (type/account/category as tappable chips, amount input, defaults to today) plus a recent-transactions list with delete, matching the plan's emphasis on fast mobile entry (Section 53) rather than mirroring web's full edit UI.
+- Tests: 9 new backend unit tests (45 total) — including the idempotency race and the Uncategorized-bucket mapping — 8 new integration tests (30 total) including a critical isolation test (a user cannot read/edit/delete another user's transaction, or create one against another user's account) and a dedicated idempotency-replay test.
+- **Followed the new AGENTS.md guidance this time**: booted the real `apps/api` dev server against the synced local database mid-verification (not just at the end) and smoke-tested create/list/category-totals/idempotency-replay with real `curl` requests against real local Postgres data — all matched what the integration tests predicted.
+- Verified `pnpm quality` passes end to end — exit code 0. Committed locally: "Add Phase 5 transactions" (pending — see below).
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Begin **Phase 5 — Transactions**: create/edit/delete expense and income, listing with pagination/filters/search, category totals. This is the phase the plan calls "the first milestone where the product becomes genuinely useful" (Section 60) — it's also where the `Idempotency-Key` header (ADR-007) needs to actually be wired up on the create endpoint, and where `Transaction.relatedBillOccurrenceId`/`relatedGoalContributionId` linkage (ADR-005) starts to matter, even though Bills/Goals themselves are later phases.
+Begin **Phase 6 — Dashboard V1**: current-period income/expenses/net balance, spending-by-category (the `category-totals` endpoint already built), recent transactions, a dashboard API aggregation endpoint, web + mobile dashboard UI. This is the first phase that turns the raw CRUD built in Phases 4–5 into the "useful answers" the product principles call for (plan Section 2.2) — pulling numbers together rather than adding new entities.
 
-Suggested habit going forward, given the runtime-bug lesson above: boot `apps/api` (and ideally `apps/web`) at least once per phase, not just at the very end — `pnpm quality` passing is necessary but not sufficient evidence the app works.
+Continue the habit from Phase 5: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
 ## Known Issues
 
@@ -90,6 +105,7 @@ Suggested habit going forward, given the runtime-bug lesson above: boot `apps/ap
 - `Budget`'s "overall cap vs. per-category" invariant is not enforced by a DB constraint — validate at the service layer when the Budget API is built (Phase 7).
 - Structured error model (plan Section 50), rate limiting on auth endpoints (plan Section 39, Phase 13 scope) — both deliberately deferred, documented in `docs/architecture/security.md`'s Known Gaps.
 - Web/mobile Accounts/Categories UI supports create/archive/restore but not inline editing yet (rename/change-type) — the API supports it (`PATCH`), the UI just doesn't expose it. Small follow-up, not a blocker.
+- Web/mobile Transactions UI doesn't expose changing which account/category a transaction belongs to during edit (only amount/merchant on web; mobile has no edit UI at all, by design — see Phase 5 above). The API supports full edits.
 
 ## Decisions Made
 
@@ -100,31 +116,25 @@ See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` thro
 ```bash
 pnpm install
 docker compose up -d                                              # local Postgres, healthy
-docker exec budget-terry-postgres psql -U budget_terry -d budget_terry_dev -c "DELETE FROM users;"
-npx prisma migrate resolve --rolled-back 20260815000000_add_auth   # (from apps/api)
-npx prisma migrate deploy                                         # applied cleanly to local dev DB
-pnpm --filter @budget-terry/api run db:generate
-pnpm --filter @budget-terry/api run db:seed                       # dev@budgetterry.local seeded
 pnpm --filter @budget-terry/api run start:dev                     # boots cleanly, all routes mapped
 curl http://localhost:3001/health                                 # {"status":"ok"}
 curl -X POST http://localhost:3001/auth/login ...                 # real login against local DB, works
-curl http://localhost:3001/categories -H "Authorization: Bearer ..." # 200, 15 categories
-curl http://localhost:3001/categories                             # 401 with no token
-pnpm --filter @budget-terry/web run dev                           # boots cleanly
-curl http://localhost:3000/login                                  # 200, real page content
-pnpm --filter @budget-terry/api run test:integration               # 22/22 pass, real Testcontainers Postgres
+curl -X POST http://localhost:3001/transactions ... -H "Idempotency-Key: k1"   # creates
+curl -X POST http://localhost:3001/transactions ... -H "Idempotency-Key: k1"   # replays same id
+curl http://localhost:3001/transactions/category-totals?from=...&to=...        # correct sums + Uncategorized
+pnpm --filter @budget-terry/api run test:integration               # 30/30 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:integration
 pnpm build
-pnpm quality        # PASS, exit code 0, 92 tests total
+pnpm quality        # PASS, exit code 0
 ```
 
 ## Last Quality Gate
 
-PASS (2026-08-19) — `pnpm quality` exit code 0, 92 tests across the workspace. Also verified by actually running both `apps/api` and `apps/web` dev servers against the real local database (see Post-Phase-4 fix above) — not just tests/build passing.
+PASS (2026-08-19) — `pnpm quality` exit code 0, 117 tests across the workspace (87 unit + 30 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing create/list/category-totals/idempotency with real `curl` requests — not just tests/build passing.
 
 ## Resume Instructions
 

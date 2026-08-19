@@ -25,6 +25,7 @@ export default function DashboardPage() {
         Logged in as {user.displayName} ({user.email})
       </p>
       <nav className="flex gap-4 text-sm underline">
+        <Link href="/transactions">Transactions</Link>
         <Link href="/accounts">Accounts</Link>
         <Link href="/categories">Categories</Link>
       </nav>

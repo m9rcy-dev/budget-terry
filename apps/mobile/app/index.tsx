@@ -24,6 +24,9 @@ export default function HomeScreen() {
         Logged in as {user.displayName} ({user.email})
       </Text>
       <View style={styles.nav}>
+        <Link href="/transactions" style={styles.navLink}>
+          Transactions
+        </Link>
         <Link href="/accounts" style={styles.navLink}>
           Accounts
         </Link>

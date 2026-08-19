@@ -8,6 +8,7 @@ import { CategoriesModule } from "./categories/categories.module";
 import { validateEnv } from "./config/env";
 import { HealthController } from "./health/health.controller";
 import { PrismaModule } from "./prisma/prisma.module";
+import { TransactionsModule } from "./transactions/transactions.module";
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     AuthModule,
     AccountsModule,
     CategoriesModule,
+    TransactionsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],
