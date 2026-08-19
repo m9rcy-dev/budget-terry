@@ -6,6 +6,7 @@ import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { validateEnv } from "./config/env";
+import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthController } from "./health/health.controller";
 import { PrismaModule } from "./prisma/prisma.module";
 import { TransactionsModule } from "./transactions/transactions.module";
@@ -18,6 +19,7 @@ import { TransactionsModule } from "./transactions/transactions.module";
     AccountsModule,
     CategoriesModule,
     TransactionsModule,
+    DashboardModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

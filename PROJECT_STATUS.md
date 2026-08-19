@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-19
-Current Phase: Phase 6 — Dashboard V1 (not started)
+Current Phase: Phase 7 — Budgets (not started)
 Current Task: See Next Task below
 
 ## Completed
@@ -85,7 +85,20 @@ The plan calls this "the first milestone where the product becomes genuinely use
 - Mobile: `/transactions` — a quick-entry flow (type/account/category as tappable chips, amount input, defaults to today) plus a recent-transactions list with delete, matching the plan's emphasis on fast mobile entry (Section 53) rather than mirroring web's full edit UI.
 - Tests: 9 new backend unit tests (45 total) — including the idempotency race and the Uncategorized-bucket mapping — 8 new integration tests (30 total) including a critical isolation test (a user cannot read/edit/delete another user's transaction, or create one against another user's account) and a dedicated idempotency-replay test.
 - **Followed the new AGENTS.md guidance this time**: booted the real `apps/api` dev server against the synced local database mid-verification (not just at the end) and smoke-tested create/list/category-totals/idempotency-replay with real `curl` requests against real local Postgres data — all matched what the integration tests predicted.
-- Verified `pnpm quality` passes end to end — exit code 0. Committed locally: "Add Phase 5 transactions" (pending — see below).
+- Verified `pnpm quality` passes end to end — exit code 0. Committed locally: "Add Phase 5 transactions".
+
+### Phase 6 — Dashboard V1
+
+The first phase that turns raw CRUD (Phases 4–5) into the "useful answers" the product principles call for (plan Section 2.2) — no new entities, just aggregation.
+
+- `GET /dashboard/summary?from=&to=` — a single endpoint combining current-period income, expenses, net, category totals, and the 5 most recent transactions. Built by composing existing services (`TransactionsService.getCategoryTotals`/`findAllForUser`, now exported from `TransactionsModule`) rather than duplicating query logic — income/expenses use a small new `Prisma.aggregate` sum, everything else is reuse.
+- **No Budget entity exists yet** (that's Phase 7's payday-anchored periods per ADR-006), so "current period" defaults to the current calendar month when `from`/`to` are omitted — a deliberate, documented placeholder, not an oversight. Revisit once Phase 7 gives the dashboard a real period to align with.
+- `recentTransactions` is deliberately **not** scoped to the queried `from`/`to` range — "recent activity" and "this period's numbers" are different questions, and conflating them would hide a transaction dated outside the selected range that the user just entered. Caught this exact distinction via a failing integration test assertion before it became a UI bug.
+- Shared `packages/types` (`DashboardSummary`) and `packages/validation` (`dashboardSummaryQuerySchema`). Pulled the `isoDateSchema` primitive out of `transaction.ts` into its own `date.ts` now that a third consumer needs it.
+- Web `/dashboard`: real income/expenses/remaining figures, a ranked-bar category breakdown (bars sized proportionally, not a pie chart — per plan Section 70's "the numbers are the design" / bars-before-pie-charts guidance), and a recent-transactions list.
+- Mobile home screen: the same summary data, replacing the placeholder "logged in as" text — matching the plan's Home-tab-as-dashboard structure (Section 53).
+- Tests: 5 new backend unit tests (50 total), 4 new integration tests (34 total) including a critical isolation test and a default-period test. Mobile gained its first test covering real fetched data rendering (previously only auth-state rendering was tested), fixing an `act()` warning properly (an explicit `waitFor` on the mock call) rather than suppressing it.
+- Verified `pnpm quality` passes end to end — exit code 0, 127 tests total. Booted `apps/api` against the real local database mid-verification and confirmed `/dashboard/summary` correctly picked up the actual transactions created during Phase 5's own smoke test — real data, not fixtures. Committed locally: "Add Phase 6 dashboard" (pending — see below).
 
 ## In Progress
 
@@ -93,19 +106,19 @@ The plan calls this "the first milestone where the product becomes genuinely use
 
 ## Next Task
 
-Begin **Phase 6 — Dashboard V1**: current-period income/expenses/net balance, spending-by-category (the `category-totals` endpoint already built), recent transactions, a dashboard API aggregation endpoint, web + mobile dashboard UI. This is the first phase that turns the raw CRUD built in Phases 4–5 into the "useful answers" the product principles call for (plan Section 2.2) — pulling numbers together rather than adding new entities.
+Begin **Phase 7 — Budgets**: create budget (overall or per-category, per plan Section 4), budget-period calculation using `Budget.period`/`anchorDate` (ADR-006 — this is where the dashboard's calendar-month placeholder should be revisited and possibly aligned with the user's real budget period), spending-against-budget, remaining amount, percentage used, budget warnings (healthy/approaching/exceeded), web + mobile budget UI. Note ADR-002's Budget schema decision: an "overall cap vs. per-category" invariant isn't DB-enforced — validate it at the service layer now that this phase actually builds against it.
 
-Continue the habit from Phase 5: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
+Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
 ## Known Issues
 
 - A few Section 69 review questions remain informally open (NZD-only for V2? multiple financial accounts in MVP? household budgeting postponed confirmed?) — minor/confirmatory, not architecturally blocking.
 - `apps/mobile` peer-dependency warning: `jest-expo`'s `react-server-dom-webpack` wants a React 19 RC while the app pins React 18.3.1. Harmless so far; recheck after any Expo SDK upgrade.
 - Prisma's `package.json#prisma` seed config is deprecated as of Prisma 6, removed in Prisma 7 (currently on 6.19.3) — migrate to `prisma.config.ts` on the next major upgrade.
-- `Budget`'s "overall cap vs. per-category" invariant is not enforced by a DB constraint — validate at the service layer when the Budget API is built (Phase 7).
 - Structured error model (plan Section 50), rate limiting on auth endpoints (plan Section 39, Phase 13 scope) — both deliberately deferred, documented in `docs/architecture/security.md`'s Known Gaps.
 - Web/mobile Accounts/Categories UI supports create/archive/restore but not inline editing yet (rename/change-type) — the API supports it (`PATCH`), the UI just doesn't expose it. Small follow-up, not a blocker.
 - Web/mobile Transactions UI doesn't expose changing which account/category a transaction belongs to during edit (only amount/merchant on web; mobile has no edit UI at all, by design — see Phase 5 above). The API supports full edits.
+- Dashboard's "current period" is a calendar-month placeholder, not tied to any real budget period — see Next Task, this is exactly what Phase 7 should resolve.
 
 ## Decisions Made
 
@@ -119,10 +132,9 @@ docker compose up -d                                              # local Postgr
 pnpm --filter @budget-terry/api run start:dev                     # boots cleanly, all routes mapped
 curl http://localhost:3001/health                                 # {"status":"ok"}
 curl -X POST http://localhost:3001/auth/login ...                 # real login against local DB, works
-curl -X POST http://localhost:3001/transactions ... -H "Idempotency-Key: k1"   # creates
-curl -X POST http://localhost:3001/transactions ... -H "Idempotency-Key: k1"   # replays same id
-curl http://localhost:3001/transactions/category-totals?from=...&to=...        # correct sums + Uncategorized
-pnpm --filter @budget-terry/api run test:integration               # 30/30 pass, real Testcontainers Postgres
+curl http://localhost:3001/dashboard/summary ...                  # correct income/expenses/net/categories,
+                                                                    # picked up real transactions from Phase 5's own smoke test
+pnpm --filter @budget-terry/api run test:integration               # 34/34 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -134,7 +146,7 @@ pnpm quality        # PASS, exit code 0
 
 ## Last Quality Gate
 
-PASS (2026-08-19) — `pnpm quality` exit code 0, 117 tests across the workspace (87 unit + 30 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing create/list/category-totals/idempotency with real `curl` requests — not just tests/build passing.
+PASS (2026-08-19) — `pnpm quality` exit code 0, 127 tests across the workspace (93 unit + 34 integration). Also verified by actually running `apps/api` against the real local database mid-phase and confirming `/dashboard/summary` reflected real prior data correctly — not just tests/build passing.
 
 ## Resume Instructions
 

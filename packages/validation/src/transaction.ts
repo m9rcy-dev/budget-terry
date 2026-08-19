@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDateSchema } from "./date";
 import { currencyCodeSchema, minorUnitsSchema } from "./money";
 
 /**
@@ -7,9 +8,6 @@ import { currencyCodeSchema, minorUnitsSchema } from "./money";
  * handling later so they don't get counted as spending).
  */
 export const transactionTypeSchema = z.enum(["INCOME", "EXPENSE"]);
-
-/** Date only, never a timestamp — see plan Section 51. */
-const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be an ISO date (YYYY-MM-DD)");
 
 export const createTransactionSchema = z.object({
   accountId: z.string().uuid(),
