@@ -1,8 +1,8 @@
 # Project Status
 
-Last Updated: 2026-08-16
+Last Updated: 2026-08-19
 Current Phase: Phase 5 — Transactions (not started)
-Current Task: See Next Task below — starts with syncing the local dev database, a prerequisite carried over since Phase 3
+Current Task: See Next Task below
 
 ## Completed
 
@@ -62,7 +62,15 @@ Plan Section 60's Phase 3 was originally deferred by ADR-003 (auth-ready schema,
 - Added typed resource helpers to `packages/api-client` (`packages/api-client/src/resources/{accounts,categories}.ts`) shared between web and mobile.
 - Web and mobile: `/accounts` and `/categories` — list (with a "show archived" toggle), create, archive/restore. Functional, minimally styled (the Warm Ledger design system is separate future work, not part of this phase).
 - Tests: 16 new backend unit tests (36 total), 11 new integration tests (22 total) including two more critical isolation tests (a user cannot read/edit/archive/delete another user's account or category), 1 new `api-client` regression test (10 total).
-- Verified `pnpm quality` passes end to end — 58 tests across the workspace, exit code 0. Committed locally: "Add Phase 4 accounts and categories" (pending — see Next Task).
+- Verified `pnpm quality` passes end to end — 58 tests across the workspace, exit code 0. Committed locally: "Add Phase 4 accounts and categories".
+
+### Post-Phase-4 — Local DB Sync and a Real Runtime Bug
+
+- **Local dev database synced** (the blocker carried over from Phase 3): deleted the one leftover pre-auth seed row, ran `prisma migrate resolve --rolled-back`, `prisma migrate deploy`, `pnpm run db:seed`. Local Postgres now matches the schema and has the dev account (`dev@budgetterry.local`) seeded.
+- **Found and fixed a real, previously-undetected bug** while smoke-testing the actual API dev server for the first time: `pnpm --filter @budget-terry/api run start:dev` failed immediately with `ERR_MODULE_NOT_FOUND`. Root cause: `packages/types`, `validation`, `api-client`, and `ui` were all `"type": "module"`, compiled with `moduleResolution: "Bundler"` (extensionless relative imports) — fine for Vitest/webpack/Metro, but Node's native ESM loader (what `nest start`/`node dist/main.js` actually uses) requires explicit `.js` extensions on relative imports, which TypeScript's Bundler mode never adds. This had been latent since Phase 1: `tsc --noEmit`, Jest (its own resolver), and `nest build` (compiles but never executes the output) all passed without ever actually running the app. **Fixed** by compiling all four shared packages as CommonJS instead (matching `apps/api`'s own module system, the actual Node runtime consumer) — removed `"type": "module"` from each `package.json`, added `module`/`moduleResolution` overrides to each `tsconfig.json`. Verified safe for web/mobile (both bundlers handle CJS dependencies routinely).
+- **Actually ran the real dev servers for the first time this project**: `apps/api` boots cleanly, all routes map correctly; `curl`-tested `/health`, `/auth/login` (real login against the synced local DB), `GET /categories` with and without a token (200 with 15 categories / 401 without). `apps/web`'s dev server boots and serves `/login` with real content. Both shut down cleanly after.
+- Re-ran `pnpm quality` after the fix — still exit code 0, 92 tests total across the workspace.
+- Takeaway worth remembering: **passing tests and a passing `build` step do not prove an app actually runs** — `nest build` only compiles, Jest has its own module resolution distinct from Node's. Actually booting the dev server periodically (not just at the very end of a phase) would have caught this sooner.
 
 ## In Progress
 
@@ -70,20 +78,12 @@ Plan Section 60's Phase 3 was originally deferred by ADR-003 (auth-ready schema,
 
 ## Next Task
 
-1. **Sync the local dev database** (carried over since Phase 3 — see Known Issues): the harness's safety classifier has blocked every attempt to run this automatically, across two phases now. Run the four commands listed there whenever convenient, then confirm `pnpm --filter @budget-terry/api run start:dev` boots and `pnpm --filter @budget-terry/api run db:seed` succeeds.
-2. **Manually smoke-test the real flow once local dev is synced** — every phase so far has been verified through Testcontainers (real Postgres, real HTTP layer) but never against the actual `apps/web`/`apps/mobile` dev servers talking to a running local API. Worth doing once: register through the web UI, add an account and a category, archive one, log out, log back in, confirm state persists.
-3. Begin **Phase 5 — Transactions**: create/edit/delete expense and income, listing with pagination/filters/search, category totals. This is the phase the plan calls "the first milestone where the product becomes genuinely useful" (Section 60) — it's also where the `Idempotency-Key` header (ADR-007) needs to actually be wired up on the create endpoint, and where `Transaction.relatedBillOccurrenceId`/`relatedGoalContributionId` linkage (ADR-005) starts to matter, even though Bills/Goals themselves are later phases.
+Begin **Phase 5 — Transactions**: create/edit/delete expense and income, listing with pagination/filters/search, category totals. This is the phase the plan calls "the first milestone where the product becomes genuinely useful" (Section 60) — it's also where the `Idempotency-Key` header (ADR-007) needs to actually be wired up on the create endpoint, and where `Transaction.relatedBillOccurrenceId`/`relatedGoalContributionId` linkage (ADR-005) starts to matter, even though Bills/Goals themselves are later phases.
+
+Suggested habit going forward, given the runtime-bug lesson above: boot `apps/api` (and ideally `apps/web`) at least once per phase, not just at the very end — `pnpm quality` passing is necessary but not sufficient evidence the app works.
 
 ## Known Issues
 
-- **Local dev database still needs the Phase 3 migration applied** (confirmed still pending as of this update — `users` table still lacks `passwordHash`). The harness's auto-mode safety classifier has blocked every `prisma migrate`/direct-SQL write command touching the local dev Postgres across two phases now — including read-only ones, in Phase 3. The migration itself is proven correct (22/22 integration tests pass applying it, and everything built on top of it, to fresh Testcontainers databases). Run, in order:
-  ```bash
-  cd apps/api
-  docker exec budget-terry-postgres psql -U budget_terry -d budget_terry_dev -c "DELETE FROM users;"
-  npx prisma migrate resolve --rolled-back 20260815000000_add_auth
-  npx prisma migrate deploy
-  pnpm run db:seed
-  ```
 - A few Section 69 review questions remain informally open (NZD-only for V2? multiple financial accounts in MVP? household budgeting postponed confirmed?) — minor/confirmatory, not architecturally blocking.
 - `apps/mobile` peer-dependency warning: `jest-expo`'s `react-server-dom-webpack` wants a React 19 RC while the app pins React 18.3.1. Harmless so far; recheck after any Expo SDK upgrade.
 - Prisma's `package.json#prisma` seed config is deprecated as of Prisma 6, removed in Prisma 7 (currently on 6.19.3) — migrate to `prisma.config.ts` on the next major upgrade.
@@ -99,23 +99,32 @@ See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` thro
 
 ```bash
 pnpm install
-docker compose up -d                                            # local Postgres, healthy
+docker compose up -d                                              # local Postgres, healthy
+docker exec budget-terry-postgres psql -U budget_terry -d budget_terry_dev -c "DELETE FROM users;"
+npx prisma migrate resolve --rolled-back 20260815000000_add_auth   # (from apps/api)
+npx prisma migrate deploy                                         # applied cleanly to local dev DB
 pnpm --filter @budget-terry/api run db:generate
-pnpm --filter @budget-terry/api run test:integration              # 22/22 pass, real Testcontainers Postgres
+pnpm --filter @budget-terry/api run db:seed                       # dev@budgetterry.local seeded
+pnpm --filter @budget-terry/api run start:dev                     # boots cleanly, all routes mapped
+curl http://localhost:3001/health                                 # {"status":"ok"}
+curl -X POST http://localhost:3001/auth/login ...                 # real login against local DB, works
+curl http://localhost:3001/categories -H "Authorization: Bearer ..." # 200, 15 categories
+curl http://localhost:3001/categories                             # 401 with no token
+pnpm --filter @budget-terry/web run dev                           # boots cleanly
+curl http://localhost:3000/login                                  # 200, real page content
+pnpm --filter @budget-terry/api run test:integration               # 22/22 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:integration
 pnpm build
-pnpm quality        # PASS, exit code 0
+pnpm quality        # PASS, exit code 0, 92 tests total
 ```
-
-Not yet verified this session (blocked — see Known Issues): `prisma migrate deploy` / `db:seed` against the actual local dev Postgres; the real `apps/web`/`apps/mobile` dev servers against a running local `apps/api`.
 
 ## Last Quality Gate
 
-PASS (2026-08-16) — `pnpm quality` exit code 0, 58 tests across the workspace (36 backend unit, 22 integration, plus web/mobile/package unit tests).
+PASS (2026-08-19) — `pnpm quality` exit code 0, 92 tests across the workspace. Also verified by actually running both `apps/api` and `apps/web` dev servers against the real local database (see Post-Phase-4 fix above) — not just tests/build passing.
 
 ## Resume Instructions
 
@@ -124,5 +133,5 @@ PASS (2026-08-16) — `pnpm quality` exit code 0, 58 tests across the workspace 
 3. Read `AGENTS.md`.
 4. Read `docs/architecture/data-model.md`, `docs/architecture/security.md`, and `docs/adr/ADR-001` through `ADR-011` (especially the ADR-003 revision note and ADR-011).
 5. Run `git status`.
-6. Confirm Docker Desktop is running, `docker compose up -d`, then complete the local-dev-database sync under Known Issues if not already done.
+6. Confirm Docker Desktop is running (`docker compose up -d`) — local dev DB is already synced, no further action needed.
 7. Continue with the task listed under **Next Task** above.

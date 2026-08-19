@@ -65,6 +65,7 @@ These were decided during planning and apply across every phase. Full rationale 
 - **API tests** cover, per important endpoint: success, validation failure, not-found, conflict where applicable, and persistence verification.
 - Idempotency behavior (replayed `Idempotency-Key` returns the same resource, doesn't duplicate) and archive-vs-hard-delete behavior are both things that need explicit test coverage, not just manual verification.
 - Once multi-user auth is turned on: authorization isolation (**a user must never retrieve another user's financial records**) must be integration-tested explicitly, before that feature is considered done.
+- **`pnpm quality` passing is necessary but not sufficient evidence the app actually runs.** `nest build` only compiles — it never executes the output. Jest uses its own module resolution, which is more forgiving than Node's real ESM/CJS loader. A real bug (`ERR_MODULE_NOT_FOUND` from a `"type": "module"` package with extensionless relative imports) sat undetected through three full phases because nothing ever actually booted `apps/api` with `node`/`nest start` until Phase 4. **Boot the relevant dev server(s) at least once per phase** (`pnpm --filter @budget-terry/api run start:dev`, and `apps/web`'s `dev` script when touched), not just at the very end of a long session — catching a runtime-only bug early is far cheaper than catching it three phases later.
 
 ---
 
