@@ -180,5 +180,55 @@ describe("TransactionsService", () => {
         { categoryId: "uncategorized", categoryName: "Uncategorized", totalMinorUnits: 250 },
       ]);
     });
+
+    it("filters by accountId when provided", async () => {
+      const { service, prisma } = buildTransactionsService();
+      prisma.transaction.groupBy.mockResolvedValue([]);
+      prisma.category.findMany.mockResolvedValue([]);
+
+      await service.getCategoryTotals("user-1", "2026-08-01", "2026-08-31", "acct-1");
+
+      expect(prisma.transaction.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ accountId: "acct-1" }),
+        }),
+      );
+    });
+  });
+
+  describe("getMonthlyTotals", () => {
+    it("excludes TRANSFER and applies account/category filters", async () => {
+      const { service, prisma } = buildTransactionsService();
+      prisma.transaction.findMany.mockResolvedValue([
+        {
+          type: "EXPENSE",
+          amountMinorUnits: 5000,
+          transactionDate: new Date("2026-08-12T00:00:00.000Z"),
+        },
+        {
+          type: "INCOME",
+          amountMinorUnits: 400000,
+          transactionDate: new Date("2026-08-01T00:00:00.000Z"),
+        },
+      ]);
+
+      const result = await service.getMonthlyTotals("user-1", "2026-08-01", "2026-08-31", {
+        accountId: "acct-1",
+        categoryId: "cat-1",
+      });
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            type: { in: ["INCOME", "EXPENSE"] },
+            accountId: "acct-1",
+            categoryId: "cat-1",
+          }),
+        }),
+      );
+      expect(result).toEqual([
+        { month: "2026-08", incomeMinorUnits: 400000, expensesMinorUnits: 5000 },
+      ]);
+    });
   });
 });

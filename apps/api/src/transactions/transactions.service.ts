@@ -6,6 +6,7 @@ import type {
   UpdateTransactionInput,
 } from "@budget-terry/validation";
 import { AccountsService } from "../accounts/accounts.service";
+import { bucketByMonth, type MonthlyTotal } from "../analytics/monthly-bucketing";
 import { CategoriesService } from "../categories/categories.service";
 import { isUniqueConstraintViolation } from "../common/prisma-errors";
 import { PrismaService } from "../prisma/prisma.service";
@@ -171,13 +172,19 @@ export class TransactionsService {
     });
   }
 
-  async getCategoryTotals(userId: string, from: string, to: string): Promise<CategoryTotal[]> {
+  async getCategoryTotals(
+    userId: string,
+    from: string,
+    to: string,
+    accountId?: string,
+  ): Promise<CategoryTotal[]> {
     const totals = await this.prisma.transaction.groupBy({
       by: ["categoryId"],
       where: {
         userId,
         type: "EXPENSE",
         transactionDate: { gte: new Date(from), lte: new Date(to) },
+        ...(accountId && { accountId }),
       },
       _sum: { amountMinorUnits: true },
     });
@@ -195,5 +202,41 @@ export class TransactionsService {
         : "Uncategorized",
       totalMinorUnits: total._sum.amountMinorUnits ?? 0,
     }));
+  }
+
+  /**
+   * Income and expense sums per month within [from, to] — feeds both the
+   * "spending by month" and "income vs expenses" analytics reports (see
+   * AnalyticsService, which derives spending-by-month as just the
+   * expense side of this same result rather than querying twice).
+   */
+  async getMonthlyTotals(
+    userId: string,
+    from: string,
+    to: string,
+    filters: { accountId?: string; categoryId?: string } = {},
+  ): Promise<MonthlyTotal[]> {
+    // TRANSFER is a defined enum value but deliberately unused by any
+    // write path yet (ADR-005/plan Section 18) — filtered explicitly so
+    // bucketByMonth's INCOME/EXPENSE-only type stays accurate rather
+    // than silently mis-bucketing a future TRANSFER as an expense.
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        type: { in: ["INCOME", "EXPENSE"] },
+        transactionDate: { gte: new Date(from), lte: new Date(to) },
+        ...(filters.accountId && { accountId: filters.accountId }),
+        ...(filters.categoryId && { categoryId: filters.categoryId }),
+      },
+      select: { type: true, amountMinorUnits: true, transactionDate: true },
+    });
+
+    return bucketByMonth(
+      transactions as {
+        type: "INCOME" | "EXPENSE";
+        amountMinorUnits: number;
+        transactionDate: Date;
+      }[],
+    );
   }
 }

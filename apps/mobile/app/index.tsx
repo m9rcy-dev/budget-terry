@@ -61,6 +61,9 @@ export default function HomeScreen() {
         <Link href="/goals" style={styles.navLink}>
           Goals
         </Link>
+        <Link href="/analytics" style={styles.navLink}>
+          Analytics
+        </Link>
       </View>
 
       {summary && (

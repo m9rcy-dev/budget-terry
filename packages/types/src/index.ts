@@ -8,3 +8,4 @@ export * from "./budget";
 export * from "./bill";
 export * from "./calendar";
 export * from "./goal";
+export * from "./analytics";

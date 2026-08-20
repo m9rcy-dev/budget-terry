@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AccountsModule } from "./accounts/accounts.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
@@ -28,6 +29,7 @@ import { TransactionsModule } from "./transactions/transactions.module";
     BillsModule,
     CalendarModule,
     GoalsModule,
+    AnalyticsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

@@ -55,6 +55,7 @@ export default function DashboardPage() {
           <Link href="/bills">Bills</Link>
           <Link href="/calendar">Calendar</Link>
           <Link href="/goals">Goals</Link>
+          <Link href="/analytics">Analytics</Link>
         </nav>
       </div>
 

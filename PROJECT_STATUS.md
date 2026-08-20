@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-20
-Current Phase: Phase 10 — Savings Goals (complete)
+Current Phase: Phase 11 — Analytics (complete)
 Current Task: See Next Task below
 
 ## Completed
@@ -171,6 +171,23 @@ The user tried logging into `apps/web` for the first time this session and got "
 5. Added a "Quick Start — Run the App Locally" step-by-step section to `README.md` (clone → env → Postgres → migrate/seed → start API → start web → log in with the seeded `dev@budgetterry.local` account), plus a `WEB_ORIGIN` explanation and a troubleshooting entry for this exact symptom, since this is the first time anyone has actually followed the README to run the app fresh.
 6. **Process takeaway, worth remembering going forward**: `curl`-based "smoke testing" (the habit adopted after the Phase 4 ESM bug) verifies the API works — it does not verify the _browser_ can reach the API. These are different guarantees. A real browser check (even a manual one) should happen at least once before considering the web app itself done, the same way booting the dev server was added after Phase 4's lesson that build+test passing isn't the same as the app actually running.
 7. Verified `pnpm quality` passes end to end — exit code 0 (unchanged test count structurally, +1 api-client regression test, +1 login page test = 290 tests total: 228 unit + 62 integration). Committed locally: "Fix CORS and fetch binding preventing browser login".
+8. Separately, hit and fixed a `Server Error: Cannot find module './NNN.js'` from a corrupted `apps/web/.next` build cache (caused by killing/restarting the dev server abruptly several times mid-session) — `rm -rf apps/web/.next` and restart resolved it. Not a code bug; added to README troubleshooting. Committed locally: "Add troubleshooting note for stale Next.js build cache errors".
+
+### Phase 11 — Analytics
+
+The plan's Section 10 feature: spending-by-category, spending-by-month, income-vs-expenses, budget-vs-actual, savings-contributions, goal-progress, recurring-expense-summary, and highest-expense-categories reports, with date/account/category filters and real charts (plan Section 12 explicitly recommends Recharts). The first phase primarily about _reporting over_ existing data rather than new write paths — same "compose existing services" shape as the dashboard and calendar before it.
+
+- **Single endpoint, not eight**: `GET /analytics/summary?from=&to=&accountId=&categoryId=&limit=` returns one `AnalyticsSummary` composing `TransactionsService`, `BudgetsService`, `BillsService`, and `GoalsService`. Of the eight sections, five are scoped to `from`/`to` (spendingByCategory, spendingByMonth, incomeVsExpenses, highestExpenseCategories, savingsContributions) and three are current-state snapshots that deliberately ignore it (budgetVsActual, goalProgress, recurringExpenseSummary) — a budget's "actual" is always its current period (ADR-006), not an arbitrary past range, documented inline rather than silently inconsistent.
+- **`spendingByMonth` and `incomeVsExpenses` share one query**, not two: `TransactionsService.getMonthlyTotals` fetches matching transactions once and a new pure `bucketByMonth` utility (`apps/api/src/analytics/monthly-bucketing.ts`, unit-tested with year-boundary and sparse-month cases) buckets them into per-month income/expense sums — spending-by-month is derived as just the expense side of that same result. `TRANSFER` is explicitly filtered out of the query (a defined-but-unused enum value per ADR-005) so the bucketing function's `INCOME | EXPENSE`-only type stays accurate rather than silently mis-bucketing a hypothetical future transfer as an expense.
+- New `apps/api/src/analytics/recurring-expense.ts` (`monthlyEquivalent`) converts a bill's per-occurrence amount to a monthly-equivalent cost (weekly ×52/12, fortnightly ×26/12, quarterly ÷3, yearly ÷12) so recurring commitments on different schedules can be summed directly — isolated and unit-tested like every other tricky calculation in this codebase (`budget-period.ts`, `bill-recurrence.ts`, `goal-progress.ts`).
+- `TransactionsService.getCategoryTotals` gained an optional `accountId` filter (backward compatible — Dashboard's existing call site is unaffected).
+- Reused existing types directly rather than duplicating shapes: `AnalyticsSummary.budgetVsActual: Budget[]` and `goalProgress.goals: SavingsGoal[]` are the exact same client types `GET /budgets`/`GET /goals` already return — the backend service composes the richer `BudgetWithStatus`/`GoalWithProgress` internal types (same "backend types carry Dates, frontend types carry strings, bridged by JSON transport" pattern already used everywhere else in this codebase), not a new parallel shape.
+- **Deliberately out of scope**: the plan's "Tag" filter — no `Tag` entity exists anywhere in the Phase 2 schema, so there's nothing to filter by. Not silently dropped; documented here and in the validation schema's comment.
+- Shared `packages/types` (`AnalyticsSummary` and its section types) and `packages/validation` (`analyticsQuerySchema` — `from`/`to` required, same reasoning as the calendar's query: a report always has a concrete range, no natural default). `packages/api-client` gained `getAnalyticsSummary`.
+- Web `/analytics`: added **Recharts** (the plan's own recommendation) for the three genuinely trend-shaped sections — spending-by-category (horizontal bar), income-vs-expenses-by-month (grouped bar), budget-vs-actual (grouped bar, overall budgets only) — with plain ranked lists for the rest (highest categories, recurring expenses, savings contributions, goal progress), matching plan Section 10's "charts should help interpretation, not decorate." Date range + account/category filter controls.
+- Mobile `/analytics`: no native charting dependency added — ranked-bar lists throughout (reusing the same `barTrack`/`barFill` pattern already established on the Budgets/Goals screens), a documented, deliberate scope decision consistent with the project's existing bars-before-pie-charts approach, rather than pulling in a heavy native charting library for a hobby app. "This month" / "Last 30 days" preset chips replace a date picker (mobile has no date-input component yet, same limitation already accepted for bill/budget creation).
+- Tests: 10 new backend unit tests for `AnalyticsService` (182 total) plus 13 for the two new pure utilities (counted above) plus 2 new `TransactionsService` tests for the extended/new methods, 4 new integration tests (66 total) covering a full realistic-data summary, account-filter narrowing, and a critical isolation test.
+- Verified `pnpm quality` passes end to end — exit code 0, 319 tests total (253 unit + 66 integration). Booted `apps/api` against the real local database mid-phase and smoke-tested `/analytics/summary` with `curl` across a realistic mix of transactions/budget/bill/goal-contribution data — confirmed the goal contribution's linked `Transaction` (ADR-005) correctly flows into `spendingByCategory` as an "Uncategorized" expense, proving the "Transaction as single source of truth" principle holds end-to-end through Analytics too. Also verified the web `/analytics` page visually in a real browser (Chrome automation) — charts rendered correctly with live data, empty states rendered correctly for sections with no data. Committed locally: "Add Phase 11 analytics".
 
 ## In Progress
 
@@ -178,7 +195,7 @@ The user tried logging into `apps/web` for the first time this session and got "
 
 ## Next Task
 
-Phase 10 is complete. Re-read plan Section 60 for Phase 11 — Analytics: spending-by-category report, spending trend, budget vs. actual, income vs. expenses, recurring expense report, goal contribution report, date/account/category filters, charts, reporting performance tests. This is the first phase primarily about _reporting over_ the data Phases 4–10 already produce (transactions, budgets, bills, goal contributions) rather than new write paths — expect it to compose existing services the way Phase 6's dashboard and Phase 9's calendar did, plus real chart rendering on web/mobile (no charting library chosen yet — evaluate options as part of this phase).
+Phase 11 is complete. Re-read plan Section 60 for Phase 12 — UX Polish: responsive review, mobile UX review, loading states, empty states, error states, accessibility review, form consistency, navigation consistency, design tokens, dark mode decision, performance review. Plan Section 70 defines the target visual theme ("Warm Ledger" — calm, practical, banking-app-meets-budgeting-notebook) and Section 74 its design tokens; everything built through Phase 11 has been deliberately plain Tailwind utility classes with no design system, by design (documented at Phase 4) — this is the phase that actually applies Warm Ledger. Unlike every prior phase, this one revisits existing screens rather than adding new ones — expect it to touch most files under `apps/web/src/app/*` and `apps/mobile/app/*` without new backend work.
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
@@ -196,8 +213,9 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - Calendar entries for a recurring bill can go missing beyond the 90-day occurrence-generation horizon until a bill list/get call tops it up (see Phase 9) — not a bug, a documented consequence of no batch job existing. Low practical impact since a calendar view realistically stays within a few months.
 - Goals UI (web + mobile) doesn't expose editing an existing goal's fields (name/target amount/target date/account/notes) — the API supports it (`PATCH /goals/:id`), the UI only offers create/contribute/complete/archive/restore. Same category of gap as Accounts/Categories/Bills above, not a blocker.
 - Recurring/automated payday contribution rules (plan Section 8) are deliberately out of scope — see Phase 10 above for why (no payday/recurring-income entity exists, and the plan itself frames automated splitting as a future capability).
-
-## Decisions Made
+- The plan's "Tag" filter (Section 10) is out of scope — no `Tag` entity exists anywhere in the schema; see Phase 11 above.
+- "Reporting performance tests" (a Phase 11 plan task) weren't written — `/analytics/summary` composes several already-tested services without pagination or heavy aggregation, and a hobby app's data volume doesn't currently warrant dedicated performance tests. Revisit if this ever becomes a real bottleneck.
+- Web/mobile Analytics UI has no editing/creation actions (by design — it's a read-only reporting surface over data managed elsewhere).
 
 See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` through `ADR-011` for full rationale on each. Note ADR-003 was revised in place on 2026-08-15 (real auth built in Phase 3, not deferred) — read the revision note, not just the original Decision section.
 
@@ -238,6 +256,10 @@ curl -i -X POST http://localhost:3001/auth/login -H "Origin: http://localhost:30
 # Real browser login (Chrome automation), not curl:
 #   - reproduced the pre-fix failure: TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation
 #   - post-fix: real login through the actual UI form, redirected to /dashboard with real seeded data
+curl http://localhost:3001/analytics/summary?from=&to=                # all 8 report sections composed correctly against real dev-account data
+pnpm --filter @budget-terry/api run start:dev                     # /analytics route mapped, boots cleanly
+# Real browser check of /analytics (Chrome automation): charts rendered with live data,
+# correct empty states for sections with no data (no budgets/bills/goals on the dev account)
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -249,7 +271,7 @@ pnpm quality        # PASS, exit code 0
 
 ## Last Quality Gate
 
-PASS (2026-08-20) — `pnpm quality` exit code 0, 290 tests across the workspace (228 unit + 62 integration). Also verified by driving a real login through the actual browser UI (Chrome automation, not curl) end to end, confirming it redirects to the dashboard with real seeded data — the first time this project's web login has been checked in an actual browser rather than curl/integration tests, which is exactly how the CORS and fetch-binding bugs went undetected through 10 phases.
+PASS (2026-08-20) — `pnpm quality` exit code 0, 319 tests across the workspace (253 unit + 66 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing `/analytics/summary` with `curl` against a realistic mix of transactions/budget/bill/goal-contribution data, and by checking the web `/analytics` page in a real browser (Chrome automation) — charts rendered correctly with live data and empty states rendered correctly where there was none.
 
 ## Resume Instructions
 
