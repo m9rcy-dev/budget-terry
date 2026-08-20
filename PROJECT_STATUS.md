@@ -1,7 +1,7 @@
 # Project Status
 
-Last Updated: 2026-08-19
-Current Phase: Phase 7 — Budgets (complete)
+Last Updated: 2026-08-20
+Current Phase: Phase 8 — Bills (complete)
 Current Task: See Next Task below
 
 ## Completed
@@ -114,13 +114,28 @@ The plan's Section 4 budgeting feature: an "overall cap or per-category" budget,
 - Caught and fixed two bugs before they shipped: a TS2502 "referenced in its own type annotation" error in the service spec caused by a `$transaction` mock callback parameter shadowing the outer `tx` const of the same name (renamed the parameter); and two `it.each` boundary-value test cases that were arithmetically wrong (79999/100000 asserted as `APPROACHING` when it's actually `HEALTHY` at 79.999%) — fixed by using clean round percentages that don't hit rounding ambiguity.
 - Verified `pnpm quality` passes end to end — exit code 0, 173 tests total (131 unit + 42 integration). Booted `apps/api` against the real local database mid-verification and smoke-tested the full budget lifecycle with `curl`: overall budget creation, live spend/remaining/status after adding a real expense transaction, per-category XOR budget creation, the 400 rejection when both `totalAmountMinorUnits` and `categoryAllocations` are sent, and delete → 404. Also booted `apps/web` and confirmed `/budgets` compiles and serves 200. Committed locally: "Add Phase 7 budgets".
 
+### Phase 8 — Bills
+
+The plan's Section 5 bills feature: known/expected payments, one-off or recurring, tracked through a six-state display status, with "mark paid" feeding straight into the transaction ledger (ADR-005).
+
+- `bill-recurrence.ts` — occurrence date generation and display-status mapping, isolated and unit-tested like `budget-period.ts` before it. `generateOccurrenceDates(recurrence, from, horizonEnd)` always includes `from` (the caller's explicit starting date) then steps forward (WEEKLY/FORTNIGHTLY by days, MONTHLY/QUARTERLY/YEARLY by clamped months, reusing the `addUtcDays`/`addUtcMonthsClamped` helpers now extracted to `apps/api/src/common/date-utils.ts` and shared with `budget-period.ts`) while within the horizon. `computeDisplayStatus` maps stored `PENDING`/`PAID`/`SKIPPED` + `dueDate` to the plan's six states (`UPCOMING`/`DUE_SOON`/`DUE_TODAY`/`OVERDUE`/`PAID`/`SKIPPED`) — PAID/SKIPPED pass straight through, PENDING is split by comparing to `today`. ADR-010 deliberately left two product decisions open for this phase to make: a 90-day occurrence-generation horizon, and a 7-day "due soon" window — both documented inline, not hidden magic numbers. 22 unit tests, including month-clamping across recurrence types and every display-status boundary.
+- **No batch job generates future occurrences.** `BillsService.ensureOccurrencesGenerated` tops up a recurring bill's occurrences opportunistically whenever it's read (list or get) — if the last occurrence falls short of the 90-day horizon, it generates forward from there. ONE_OFF bills and archived bills never generate more. This keeps the "computed / generated on read, not by a cron job" principle established by ADR-010 consistent across the codebase.
+- **`markOccurrencePaid` atomically creates the linked Transaction** (ADR-005) inside a `$transaction` alongside the occurrence's status update — `EXPENSE`, dated today, using the bill's default account/category (or an explicitly provided `accountId` when the bill has none). Idempotent: calling it again on an already-PAID occurrence returns the existing state without creating a second transaction — verified with a real double-call integration test, not just unit-mocked. `markOccurrenceSkipped` is idempotent on repeat `SKIPPED` calls and rejects (409) skipping an occurrence that's already been paid.
+- Editing a bill's `amountMinorUnits` propagates to its still-`PENDING` occurrences but never to `PAID`/`SKIPPED` ones — a price change should affect what's still owed, not rewrite settled history. Currency, recurrence, and `firstDueDate` are deliberately not editable (changing recurrence would require regenerating the future series, out of scope this phase — archive and recreate instead), same "not editable" precedent as `Account.currency`.
+- No hard delete for bills — the plan's Phase 8 task list never lists one, and every bill always has at least one occurrence, so it would follow the same "archive instead" path every other archivable resource takes anyway (ADR-008). Archive/restore only, mirroring Accounts/Categories.
+- Shared `packages/validation` (`createBillSchema`, `updateBillSchema`, `markBillOccurrencePaidSchema`) and `packages/types` (`Bill`, `BillOccurrence`, `BillRecurrenceType`, `BillDisplayStatus`). `packages/api-client` gained typed resource helpers including the two occurrence actions.
+- Web `/bills`: create form (name/amount/recurrence/first due date/optional category+account), list showing each occurrence with a status dot plus explicit text label (never color-only, per plan Section 54), Pay/Skip actions on PENDING occurrences, archive/restore toggle with a "show archived" checkbox.
+- Mobile `/bills`: the same chip-based quick-entry pattern established in Phase 5/7 (recurrence/category/account as tappable chips), status dot + label per occurrence, Pay/Skip/Archive actions.
+- Tests: 20 new backend unit tests for `BillsService` (124 total) plus 22 for `bill-recurrence` (counted above), 9 new integration tests (51 total) covering one-off vs. recurring occurrence generation, paid-creates-linked-transaction (verified by re-fetching the transaction, not just trusting the response), paid-twice-doesn't-duplicate, the no-default-account 400, skip/paid-conflict, archive-stops-generation-keeps-history, amount-edit-propagation, and a critical isolation test covering read/edit/pay/skip/archive.
+- Verified `pnpm quality` passes end to end — exit code 0, 235 tests total (184 unit + 51 integration). Booted `apps/api` against the real local database mid-verification and smoke-tested the full bill lifecycle with `curl` before the test suite was even finished (create recurring bill, pay first occurrence, confirm idempotent re-pay, skip a later occurrence, reject skip-after-paid, create a ONE_OFF bill, archive) — caught this phase's logic working correctly before formalizing it into tests, not after. Also booted `apps/web` and confirmed `/bills` compiles and serves 200. Committed locally: "Add Phase 8 bills".
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Phase 7 is complete. Re-read plan Section 60 for what Phase 8 covers next (Bills, per the plan's phase ordering) before starting: Bill/BillOccurrence CRUD, occurrence generation from a recurrence rule, status computed at read time (ADR-010 already covers the "not stored" decision — this phase is where it actually gets built against), linking a paid occurrence to a Transaction (ADR-005), web + mobile UI.
+Phase 8 is complete. Re-read plan Section 60 for Phase 9 — Calendar: a calendar API plus month/week/agenda views surfacing bills and expected income together (plan Section 6), paid/unpaid visual state, detail interaction on selecting an entry. This is presentation over data Phases 5–8 already produce (transactions, bills/occurrences) — no new domain entities expected, similar in shape to how Phase 6's dashboard composed existing services rather than duplicating query logic.
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
@@ -133,6 +148,8 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - Web/mobile Accounts/Categories UI supports create/archive/restore but not inline editing yet (rename/change-type) — the API supports it (`PATCH`), the UI just doesn't expose it. Small follow-up, not a blocker.
 - Web/mobile Transactions UI doesn't expose changing which account/category a transaction belongs to during edit (only amount/merchant on web; mobile has no edit UI at all, by design — see Phase 5 above). The API supports full edits.
 - Dashboard's "current period" is still a calendar-month placeholder (Phase 6), not aligned to a user's real budget period now that Phase 7 has one — small follow-up to make the dashboard period-aware, not a blocker.
+- Bills UI (web + mobile) doesn't expose editing an existing bill's fields (name/amount/category/account/notes) — the API supports it (`PATCH /bills/:id`), the UI only offers create/pay/skip/archive. Same category of gap as Accounts/Categories above, not a blocker.
+- Mobile bill creation always uses today's date as `firstDueDate` (no date picker component yet) — same simplification already accepted for mobile budget creation's `anchorDate` in Phase 7. Web's bill form does expose a real date picker.
 
 ## Decisions Made
 
@@ -152,9 +169,15 @@ curl -X POST http://localhost:3001/budgets ... totalAmountMinorUnits  # overall 
 curl -X POST http://localhost:3001/budgets ... categoryAllocations    # per-category budget, correct XOR fields (overall fields null)
 curl -X POST http://localhost:3001/budgets ... both fields set        # 400, rejected by Zod superRefine
 curl -X DELETE http://localhost:3001/budgets/:id                      # 204, then GET same id -> 404
-pnpm --filter @budget-terry/api run start:dev                     # /budgets routes mapped, boots cleanly with BudgetsModule
-pnpm --filter @budget-terry/web run dev                           # /budgets compiles, GET returns 200
-pnpm --filter @budget-terry/api run test:integration               # 42/42 pass, real Testcontainers Postgres
+curl -X POST http://localhost:3001/bills ... recurrence MONTHLY       # bill created with 3+ generated occurrences
+curl -X POST http://localhost:3001/bills/:id/occurrences/:occId/pay   # occurrence -> PAID, relatedTransactionId set
+curl -X POST http://localhost:3001/bills/:id/occurrences/:occId/pay   # called again -> 201, same relatedTransactionId (idempotent)
+curl -X POST http://localhost:3001/bills/:id/occurrences/:occId2/skip # occurrence -> SKIPPED
+curl -X POST .../occurrences/:occId/skip (already PAID)               # 409
+curl -X POST http://localhost:3001/bills/:id/archive                  # isArchived: true
+pnpm --filter @budget-terry/api run start:dev                     # /budgets, /bills routes mapped, boots cleanly
+pnpm --filter @budget-terry/web run dev                           # /budgets, /bills compile, GET returns 200
+pnpm --filter @budget-terry/api run test:integration               # 51/51 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -166,7 +189,7 @@ pnpm quality        # PASS, exit code 0
 
 ## Last Quality Gate
 
-PASS (2026-08-19) — `pnpm quality` exit code 0, 173 tests across the workspace (131 unit + 42 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing the full budget lifecycle with `curl`, and by booting `apps/web` and confirming `/budgets` serves 200 — not just tests/build passing.
+PASS (2026-08-20) — `pnpm quality` exit code 0, 235 tests across the workspace (184 unit + 51 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing the full bill lifecycle with `curl` (recurring bill creation, pay, idempotent re-pay, skip, paid-then-skip rejection, one-off bill, archive), and by booting `apps/web` and confirming `/bills` serves 200 — not just tests/build passing.
 
 ## Resume Instructions
 
