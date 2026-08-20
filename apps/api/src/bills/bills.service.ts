@@ -38,6 +38,16 @@ export interface BillOccurrenceWithStatus {
   relatedTransactionId: string | null;
 }
 
+export interface BillOccurrenceForCalendar {
+  occurrenceId: string;
+  billId: string;
+  billName: string;
+  dueDate: Date;
+  amountMinorUnits: number;
+  currency: BillOccurrence["currency"];
+  displayStatus: BillDisplayStatus;
+}
+
 export interface BillWithStatus {
   id: string;
   name: string;
@@ -270,6 +280,41 @@ export class BillsService {
     });
 
     return this.findOneForUser(userId, billId);
+  }
+
+  /**
+   * Occurrences due within [from, to], with their bill's name — used by
+   * the calendar (Phase 9). Unlike findAllForUser/findOneForUser, this
+   * does not top up generation first: a bill whose occurrences haven't
+   * been generated that far ahead yet simply won't appear until a later
+   * list/get call tops it up (see ensureOccurrencesGenerated). Acceptable
+   * given the 90-day horizon that calendar browsing realistically stays
+   * within. Includes occurrences from archived bills — the calendar is a
+   * factual record of what's due/was due on a date, not a management
+   * list, so it doesn't follow the default-hide-archived convention used
+   * elsewhere.
+   */
+  async findOccurrencesDueInRange(
+    userId: string,
+    from: Date,
+    to: Date,
+  ): Promise<BillOccurrenceForCalendar[]> {
+    const occurrences = await this.prisma.billOccurrence.findMany({
+      where: { userId, dueDate: { gte: from, lte: to } },
+      include: { bill: { select: { name: true } } },
+      orderBy: { dueDate: "asc" },
+    });
+
+    const today = new Date();
+    return occurrences.map((occurrence) => ({
+      occurrenceId: occurrence.id,
+      billId: occurrence.billId,
+      billName: occurrence.bill.name,
+      dueDate: occurrence.dueDate,
+      amountMinorUnits: occurrence.amountMinorUnits,
+      currency: occurrence.currency,
+      displayStatus: computeDisplayStatus(occurrence.paymentStatus, occurrence.dueDate, today),
+    }));
   }
 
   /**

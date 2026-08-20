@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-20
-Current Phase: Phase 8 — Bills (complete)
+Current Phase: Phase 9 — Calendar (complete)
 Current Task: See Next Task below
 
 ## Completed
@@ -129,13 +129,28 @@ The plan's Section 5 bills feature: known/expected payments, one-off or recurrin
 - Tests: 20 new backend unit tests for `BillsService` (124 total) plus 22 for `bill-recurrence` (counted above), 9 new integration tests (51 total) covering one-off vs. recurring occurrence generation, paid-creates-linked-transaction (verified by re-fetching the transaction, not just trusting the response), paid-twice-doesn't-duplicate, the no-default-account 400, skip/paid-conflict, archive-stops-generation-keeps-history, amount-edit-propagation, and a critical isolation test covering read/edit/pay/skip/archive.
 - Verified `pnpm quality` passes end to end — exit code 0, 235 tests total (184 unit + 51 integration). Booted `apps/api` against the real local database mid-verification and smoke-tested the full bill lifecycle with `curl` before the test suite was even finished (create recurring bill, pay first occurrence, confirm idempotent re-pay, skip a later occurrence, reject skip-after-paid, create a ONE_OFF bill, archive) — caught this phase's logic working correctly before formalizing it into tests, not after. Also booted `apps/web` and confirmed `/bills` compiles and serves 200. Committed locally: "Add Phase 8 bills".
 
+### Phase 9 — Calendar
+
+The plan's Section 6 feature: month/week/agenda views surfacing bills and expected income together, paid/unpaid/overdue visually distinguished, selecting an entry opens its detail. Built as presentation over data Phases 5–8 already produce — no new domain entities, same "compose existing services" shape as Phase 6's dashboard.
+
+- **Single flat, date-sorted endpoint, not three view-specific ones**: `GET /calendar/entries?from=&to=` returns `CalendarEntry[]` (a `BILL` | `INCOME` discriminated union). Month/week/agenda are a client-side rendering concern over the same data — the frontend picks the date range for whichever view it's showing and lays the same entries out differently. `from`/`to` are both required (unlike the dashboard's optional-with-calendar-month-default) since a calendar view always has a concrete range to display; there's no natural default to fall back to.
+- `CalendarService` composes two new range-query methods rather than duplicating query logic: `BillsService.findOccurrencesDueInRange` (reuses `computeDisplayStatus` from Phase 8's `bill-recurrence.ts` for the same six-state status) and `TransactionsService.findIncomeInRange`. `BillsService` and `TransactionsModule` were exported/imported accordingly.
+- Two deliberate scope decisions, documented inline rather than silently deviating from the plan: (1) **"Expected income" means actually-recorded income transactions in range, not a forecast** — the plan's Section 69 review question "Should salary/payday recurrence be part of MVP?" was never resolved with a recurring-income entity, so there's nothing to forecast from; this is the data-grounded interpretation consistent with the project's "computed from real data" principle throughout. (2) **"Optional savings contributions" aren't included yet** — `GoalContribution` doesn't exist until Phase 10; the `CalendarEntry` union has a comment flagging this to revisit.
+- Calendar entries include occurrences from **archived** bills (a deliberate exception to the default-hide-archived convention used by Bill/Account/Category list endpoints) — the calendar is a factual record of what's due/was due on a date, not an ongoing management list.
+- Known, documented limitation: `findOccurrencesDueInRange` doesn't top up occurrence generation the way `BillsService.findOneForUser`/`findAllForUser` do — a bill whose occurrences haven't been generated that far ahead (beyond the 90-day horizon from Phase 8) simply won't appear on the calendar until a later bill list/get call tops it up. Acceptable given calendar browsing realistically stays within that horizon; noted as a Known Issue below.
+- Shared `packages/types` (`CalendarEntry`, `CalendarBillEntry`, `CalendarIncomeEntry`) and `packages/validation` (`calendarQuerySchema`). `packages/api-client` gained `getCalendarEntries`.
+- Web `/calendar`: a Monday-first month grid (status-colored dots per day, clicking a day jumps to its agenda section) plus a full agenda list below matching the plan's Section 6 example format exactly (grouped by date, bill/income lines with amounts) — every status shown as a dot *and* text label, never color alone (plan Section 54). Pay/Skip act inline on bill entries, reusing Phase 8's bill actions directly rather than a separate detail modal.
+- Mobile `/calendar`: agenda-only (no month grid — impractical on a small screen without a calendar-grid dependency this project doesn't have), same status indicators, Pay/Skip inline, month Previous/Next navigation.
+- Tests: 5 new backend unit tests for `CalendarService` (129 total, mocked `BillsService`/`TransactionsService` composition), 5 new integration tests (56 total) covering the bills+income merge/sort, range exclusion, archived-bill inclusion, the required-params 400, and a critical isolation test.
+- Verified `pnpm quality` passes end to end — exit code 0, 245 tests total (189 unit + 56 integration). Booted `apps/api` against the real local database mid-phase (before the integration tests were even written) and smoke-tested `/calendar/entries` with `curl` — confirmed bill occurrence + income entries both appear, correctly sorted, with out-of-range entries excluded — before formalizing the behavior into tests. Also booted `apps/web` and confirmed `/calendar` serves 200 with live data. Committed locally: "Add Phase 9 calendar".
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Phase 8 is complete. Re-read plan Section 60 for Phase 9 — Calendar: a calendar API plus month/week/agenda views surfacing bills and expected income together (plan Section 6), paid/unpaid visual state, detail interaction on selecting an entry. This is presentation over data Phases 5–8 already produce (transactions, bills/occurrences) — no new domain entities expected, similar in shape to how Phase 6's dashboard composed existing services rather than duplicating query logic.
+Phase 9 is complete. Re-read plan Section 60 for Phase 10 — Savings Goals: `SavingsGoal`/`GoalContribution` CRUD (both already scaffolded in the Phase 2 schema — `currentAmountMinorUnits` deliberately NOT stored, summed from contributions live, same principle as every other computed-not-cached figure in this codebase), progress/remaining/percentage computed on read, a contribution atomically creating a linked `Transaction` (ADR-005 — same pattern Phase 8 already proved out for bill payments), and plan Section 8's "Payday Contributions" concept (suggested/manual contribution allocation across goals). Web + mobile UI, tests.
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
@@ -150,6 +165,8 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - Dashboard's "current period" is still a calendar-month placeholder (Phase 6), not aligned to a user's real budget period now that Phase 7 has one — small follow-up to make the dashboard period-aware, not a blocker.
 - Bills UI (web + mobile) doesn't expose editing an existing bill's fields (name/amount/category/account/notes) — the API supports it (`PATCH /bills/:id`), the UI only offers create/pay/skip/archive. Same category of gap as Accounts/Categories above, not a blocker.
 - Mobile bill creation always uses today's date as `firstDueDate` (no date picker component yet) — same simplification already accepted for mobile budget creation's `anchorDate` in Phase 7. Web's bill form does expose a real date picker.
+- Calendar entries for a recurring bill can go missing beyond the 90-day occurrence-generation horizon until a bill list/get call tops it up (see Phase 9 above) — not a bug, a documented consequence of no batch job existing. Low practical impact since a calendar view realistically stays within a few months.
+- Calendar doesn't show savings contributions yet (plan Section 6's "Optional savings contributions") — `GoalContribution` doesn't exist until Phase 10; revisit `CalendarService`/`CalendarEntry` once it does.
 
 ## Decisions Made
 
@@ -175,9 +192,11 @@ curl -X POST http://localhost:3001/bills/:id/occurrences/:occId/pay   # called a
 curl -X POST http://localhost:3001/bills/:id/occurrences/:occId2/skip # occurrence -> SKIPPED
 curl -X POST .../occurrences/:occId/skip (already PAID)               # 409
 curl -X POST http://localhost:3001/bills/:id/archive                  # isArchived: true
-pnpm --filter @budget-terry/api run start:dev                     # /budgets, /bills routes mapped, boots cleanly
-pnpm --filter @budget-terry/web run dev                           # /budgets, /bills compile, GET returns 200
-pnpm --filter @budget-terry/api run test:integration               # 51/51 pass, real Testcontainers Postgres
+curl http://localhost:3001/calendar/entries?from=&to=                 # bill + income entries merged, sorted by date
+curl http://localhost:3001/calendar/entries (no from/to)              # 400, rejected by Zod
+pnpm --filter @budget-terry/api run start:dev                     # /budgets, /bills, /calendar routes mapped, boots cleanly
+pnpm --filter @budget-terry/web run dev                           # /budgets, /bills, /calendar compile, GET returns 200
+pnpm --filter @budget-terry/api run test:integration               # 56/56 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -189,7 +208,7 @@ pnpm quality        # PASS, exit code 0
 
 ## Last Quality Gate
 
-PASS (2026-08-20) — `pnpm quality` exit code 0, 235 tests across the workspace (184 unit + 51 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing the full bill lifecycle with `curl` (recurring bill creation, pay, idempotent re-pay, skip, paid-then-skip rejection, one-off bill, archive), and by booting `apps/web` and confirming `/bills` serves 200 — not just tests/build passing.
+PASS (2026-08-20) — `pnpm quality` exit code 0, 245 tests across the workspace (189 unit + 56 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing `/calendar/entries` with `curl` (bill + income entries merged and sorted correctly), and by booting `apps/web` and confirming `/calendar` serves 200 with live data — not just tests/build passing.
 
 ## Resume Instructions
 

@@ -163,6 +163,14 @@ export class TransactionsService {
     await this.prisma.transaction.delete({ where: { id } });
   }
 
+  /** Income transactions within [from, to] — used by the calendar (Phase 9). */
+  async findIncomeInRange(userId: string, from: Date, to: Date): Promise<Transaction[]> {
+    return this.prisma.transaction.findMany({
+      where: { userId, type: "INCOME", transactionDate: { gte: from, lte: to } },
+      orderBy: { transactionDate: "asc" },
+    });
+  }
+
   async getCategoryTotals(userId: string, from: string, to: string): Promise<CategoryTotal[]> {
     const totals = await this.prisma.transaction.groupBy({
       by: ["categoryId"],

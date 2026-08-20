@@ -8,5 +8,6 @@ import { BillsService } from "./bills.service";
   imports: [AccountsModule, CategoriesModule],
   controllers: [BillsController],
   providers: [BillsService],
+  exports: [BillsService],
 })
 export class BillsModule {}

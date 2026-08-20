@@ -6,6 +6,7 @@ import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
 import { BillsModule } from "./bills/bills.module";
 import { BudgetsModule } from "./budgets/budgets.module";
+import { CalendarModule } from "./calendar/calendar.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { validateEnv } from "./config/env";
 import { DashboardModule } from "./dashboard/dashboard.module";
@@ -24,6 +25,7 @@ import { TransactionsModule } from "./transactions/transactions.module";
     DashboardModule,
     BudgetsModule,
     BillsModule,
+    CalendarModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],
