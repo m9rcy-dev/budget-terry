@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-20
-Current Phase: Phase 11 — Analytics (complete)
+Current Phase: Phase 12 — UX Polish (complete)
 Current Task: See Next Task below
 
 ## Completed
@@ -189,13 +189,29 @@ The plan's Section 10 feature: spending-by-category, spending-by-month, income-v
 - Tests: 10 new backend unit tests for `AnalyticsService` (182 total) plus 13 for the two new pure utilities (counted above) plus 2 new `TransactionsService` tests for the extended/new methods, 4 new integration tests (66 total) covering a full realistic-data summary, account-filter narrowing, and a critical isolation test.
 - Verified `pnpm quality` passes end to end — exit code 0, 319 tests total (253 unit + 66 integration). Booted `apps/api` against the real local database mid-phase and smoke-tested `/analytics/summary` with `curl` across a realistic mix of transactions/budget/bill/goal-contribution data — confirmed the goal contribution's linked `Transaction` (ADR-005) correctly flows into `spendingByCategory` as an "Uncategorized" expense, proving the "Transaction as single source of truth" principle holds end-to-end through Analytics too. Also verified the web `/analytics` page visually in a real browser (Chrome automation) — charts rendered correctly with live data, empty states rendered correctly for sections with no data. Committed locally: "Add Phase 11 analytics".
 
+### Phase 12 — UX Polish
+
+The plan's Section 60 catch-all revisiting existing screens rather than adding new ones: design tokens, responsive review, mobile UX review, loading/empty/error states, accessibility review, form consistency, navigation consistency, dark mode decision, performance review. No new backend work — every change lives under `packages/ui`, `apps/web/src/{app,components}/*`, and `apps/mobile/{app,components}/*`.
+
+- **Design tokens** (plan Section 74): new `packages/ui/src/tokens.ts` — `colors` (21 semantic tokens), `radius` (8/10/12px per plan Section 70), `spacing` (4px base scale), `typography`. Plan-specified values (background/surface/text/accent) come straight from Section 70's colour table; the table's "to be finalized" cells (financial positive/warning/negative, budget health states) were filled with colours already in consistent ad-hoc use since Phase 8 (Bills) rather than introducing a fourth palette this late — documented inline in `tokens.ts`. Web consumes tokens via a Tailwind theme extension (`apps/web/tailwind.config.ts`); mobile imports them directly into `StyleSheet` values — same visual language, different mechanism per platform, exactly as Section 74 anticipates.
+- **Terry** (plan Sections 71–73, the product-personality observation engine) has no assigned roadmap phase number anywhere in the plan — confirmed by grep, explicitly scoped **out** of Phase 12 rather than silently expanded into or dropped from the project.
+- Web gained shared UI primitives (`apps/web/src/components/`): `Button` (primary/secondary/ghost), `Field`/`Input`/`Select`/`Textarea` (the latter three wrapped in `React.forwardRef` — load-bearing, not decorative, see the bug below), `Section`, `StatusDot`, `EmptyState`, `LoadingState`, `ErrorState`, and `AppShell` (shared header/nav/logout, replacing a hand-copied `<nav>` block that had drifted slightly page to page over 9 phases). Mobile gained the equivalent: `Button`, `TextField`, `Section`, `StatusDot`, `EmptyState`, `LoadingState`, `ErrorState`, and `Screen` (shared header/nav-chip-row/logout/scroll container).
+- **All 8 web pages and all 8 non-auth mobile screens rewritten** onto these primitives — auth pages, dashboard, accounts, categories, transactions, budgets, bills, calendar, goals, analytics. Loading states added everywhere a page previously rendered nothing while its first fetch was in flight (list state changed from `T[]` defaulting to `[]` → `T[] | null`, so "still loading" and "genuinely empty" are visually distinct for the first time). Chart colours on the web Analytics page and status-dot colours across Bills/Calendar/Budgets now come from `@budget-terry/ui`'s hex tokens instead of ad-hoc per-page hex constants.
+- **Found and fixed a real bug via the test suite, not by inspection**: the web `Field.tsx` primitives were initially written as plain function components. `pnpm --filter @budget-terry/web test` immediately failed 3/4 `login/page.test.tsx` tests with a console warning ("Function components cannot be given refs..."). Root cause: react-hook-form's `register()` returns a `ref` that must reach the actual DOM `<input>` for RHF to read the typed value — without `React.forwardRef`, the ref silently fails to attach, and the form behaves as if every field is permanently empty. This would have broken every form in the app (login, register, and everything built on these primitives afterward) had the test suite not caught it before any of the later pages were even written. Fixed by wrapping `Input`/`Select`/`Textarea` in `forwardRef`, with an inline comment explaining why it's load-bearing.
+- **Mobile `Screen`'s content area wasn't actually scrollable** — caught while building the Analytics screen (the longest page, 6+ sections), not by inspection: it was a plain `View`, fine for the Home screen's original FlatList-only content but silently clipping anything longer than one screen's height on every other page. Fixed by wrapping `Screen`'s children in a `ScrollView`; every list inside a `Screen` now sets `scrollEnabled={false}` (the standard fix for a `FlatList` nested inside a `ScrollView`) rather than removing pagination/virtualization.
+- **Accessibility review** (plan Section 54): color is never the sole indicator anywhere in the app — every status uses `StatusDot`, pairing a colour swatch with an explicit text label, on both platforms, across Bills/Calendar/Budgets/Goals. Added `aria-label` to every web `Input`/`Select` that previously relied on `placeholder` text alone (accounts, categories, transactions, budgets, bills, goals — analytics and auth pages already had real associated `<label>`s) — placeholder text is not a reliable accessible name for screen readers, a real WCAG gap that existed since each page was first built. Mobile inputs were left as-is: React Native's `TextInput` already falls back to `placeholder` as the accessibility label on both iOS/Android when no explicit one is set, so the same gap doesn't exist there. `AppShell`'s nav already had a `nav aria-label="Main"` landmark and `aria-current="page"` on the active link from when it was first built this phase. Bumped mobile `Screen`'s nav-chip touch target to a 44pt minimum (`minHeight: 44`), per Section 54's "large touch targets" — the original chips were sized for their text content only, well under the recommended minimum.
+- **Responsive review**: `AppShell`'s header/nav already `flex-wrap`s on narrow viewports (verified: no horizontal overflow, nav links wrap to additional lines rather than clipping); mobile screens are native and inherently responsive to device width. Not otherwise changed — Warm Ledger's stat-strip/calendar grids are intentionally fixed-column (3 stats, 7 days) per the plan's own layout guidance, not a responsiveness gap.
+- **Dark mode: explicitly deferred**, not silently skipped. `tokens.ts` defines a single light-first Warm Ledger palette by design (plan Section 70's own colour table has no dark variant), and building a parallel dark palette plus testing it across all 16 screens would roughly double this phase's surface area right as it's closing out. Revisit as its own future phase if requested.
+- **Performance review** (plan Section 55): confirmed already compliant from earlier phases, no changes needed — all four suggested indexes exist in the Prisma schema (`transaction(userId, transactionDate)`, `transaction(userId, categoryId, transactionDate)`, `billOccurrence(userId, dueDate)`, `savingsGoal(userId, status)`), transactions are server-paginated, dashboard/analytics use single aggregate endpoints (Phases 6/11), and goal progress is deliberately computed live rather than cached (Phase 10, with an inline comment citing this exact plan section).
+- Verified `pnpm quality` passes end to end — exit code 0, 321 tests total (255 unit + 66 integration; +2 from `packages/ui`'s new token tests, replacing its Phase 1 placeholder test). Booted `apps/api` and `apps/web` against the real local database mid-phase (not just at the end) and visually smoke-tested Login, Dashboard, Transactions, Bills (including creating a real bill and confirming `StatusDot` colours/labels render correctly), Calendar, Accounts, Goals, and Analytics (including the Recharts colours) in a real browser (Chrome automation) after every batch of page rewrites, not just once at the end. Hit the documented stale-`.next`-cache symptom again mid-phase (this project's third time — see Post-Phase-4 and Post-Phase-10 above for the same class of issue) from the dev server hot-recompiling repeatedly across ~20 file edits; resolved with the same known fix (`rm -rf apps/web/.next` + restart), not a new bug. Committed locally: "Apply Warm Ledger design system across web and mobile (Phase 12)".
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Phase 11 is complete. Re-read plan Section 60 for Phase 12 — UX Polish: responsive review, mobile UX review, loading states, empty states, error states, accessibility review, form consistency, navigation consistency, design tokens, dark mode decision, performance review. Plan Section 70 defines the target visual theme ("Warm Ledger" — calm, practical, banking-app-meets-budgeting-notebook) and Section 74 its design tokens; everything built through Phase 11 has been deliberately plain Tailwind utility classes with no design system, by design (documented at Phase 4) — this is the phase that actually applies Warm Ledger. Unlike every prior phase, this one revisits existing screens rather than adding new ones — expect it to touch most files under `apps/web/src/app/*` and `apps/mobile/app/*` without new backend work.
+Phase 12 is complete. Re-read plan Section 60 for Phase 13 scope (the plan's own Known Issues above already flag two concrete Phase-13 candidates: structured error model per Section 50, and rate limiting on auth endpoints per Section 39).
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
@@ -216,6 +232,9 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - The plan's "Tag" filter (Section 10) is out of scope — no `Tag` entity exists anywhere in the schema; see Phase 11 above.
 - "Reporting performance tests" (a Phase 11 plan task) weren't written — `/analytics/summary` composes several already-tested services without pagination or heavy aggregation, and a hobby app's data volume doesn't currently warrant dedicated performance tests. Revisit if this ever becomes a real bottleneck.
 - Web/mobile Analytics UI has no editing/creation actions (by design — it's a read-only reporting surface over data managed elsewhere).
+- Dark mode is deliberately deferred, not built — see Phase 12 above. `tokens.ts` currently defines only a light-first Warm Ledger palette.
+- `textSecondary` (#70746F) on `background` (#F7F7F4) computes to roughly 4.4:1 contrast — just under WCAG AA's 4.5:1 for normal-size text (though above the 3:1 threshold for large text). This is a colour already in consistent use since Phase 8, not newly introduced in Phase 12; revisit only if it's ever raised as a real accessibility complaint, not preemptively.
+- Terry (plan Sections 71–73, the product-personality observation engine) has no assigned roadmap phase number and remains entirely unbuilt — see Phase 12 above for the explicit scoping decision.
 
 See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` through `ADR-011` for full rationale on each. Note ADR-003 was revised in place on 2026-08-15 (real auth built in Phase 3, not deferred) — read the revision note, not just the original Decision section.
 
@@ -260,6 +279,12 @@ curl http://localhost:3001/analytics/summary?from=&to=                # all 8 re
 pnpm --filter @budget-terry/api run start:dev                     # /analytics route mapped, boots cleanly
 # Real browser check of /analytics (Chrome automation): charts rendered with live data,
 # correct empty states for sections with no data (no budgets/bills/goals on the dev account)
+pnpm --filter @budget-terry/web run start:dev / run dev            # boots cleanly after every batch of Phase 12 page rewrites
+pnpm --filter @budget-terry/api run start:dev                     # boots cleanly, unchanged routes (no backend work this phase)
+# Real browser checks (Chrome automation) after each batch of Warm Ledger rewrites:
+#   Login, Dashboard, Transactions, Bills (created a real bill, confirmed StatusDot
+#   colours/labels), Calendar, Accounts, Goals, Analytics (Recharts colours) — all
+#   rendered correctly against real seeded/created data, not just compiled without error
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -271,7 +296,7 @@ pnpm quality        # PASS, exit code 0
 
 ## Last Quality Gate
 
-PASS (2026-08-20) — `pnpm quality` exit code 0, 319 tests across the workspace (253 unit + 66 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing `/analytics/summary` with `curl` against a realistic mix of transactions/budget/bill/goal-contribution data, and by checking the web `/analytics` page in a real browser (Chrome automation) — charts rendered correctly with live data and empty states rendered correctly where there was none.
+PASS (2026-08-20) — `pnpm quality` exit code 0, 321 tests across the workspace (255 unit + 66 integration). Also verified by actually running `apps/api` and `apps/web` against the real local database mid-phase (repeatedly, after each batch of page rewrites, not just at the end) and visually checking Login, Dashboard, Transactions, Bills, Calendar, Accounts, Goals, and Analytics in a real browser (Chrome automation) — all rendered correctly with the Warm Ledger design system applied, including live-created data (a real bill) and chart colours pulled from the new design tokens.
 
 ## Resume Instructions
 

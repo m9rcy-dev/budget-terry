@@ -8,16 +8,22 @@ import {
   payBillOccurrence,
   skipBillOccurrence,
 } from "@budget-terry/api-client";
+import { colors } from "@budget-terry/ui";
+import { AppShell } from "../../components/AppShell";
+import { Button } from "../../components/Button";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { StatusDot } from "../../components/StatusDot";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
 const BILL_STATUS_COLOR: Record<string, string> = {
-  UPCOMING: "bg-gray-400",
-  DUE_SOON: "bg-amber-500",
-  DUE_TODAY: "bg-orange-600",
-  OVERDUE: "bg-red-600",
-  PAID: "bg-green-600",
-  SKIPPED: "bg-gray-400",
+  UPCOMING: colors.billUpcoming,
+  DUE_SOON: colors.billDueSoon,
+  DUE_TODAY: colors.billDueToday,
+  OVERDUE: colors.billOverdue,
+  PAID: colors.billPaid,
+  SKIPPED: colors.billSkipped,
 };
 
 const BILL_STATUS_LABEL: Record<string, string> = {
@@ -44,9 +50,9 @@ function entryKey(entry: CalendarEntry): string {
 }
 
 function entryDotColor(entry: CalendarEntry): string {
-  if (entry.type === "BILL") return BILL_STATUS_COLOR[entry.displayStatus] ?? "bg-gray-400";
-  if (entry.type === "INCOME") return "bg-green-600";
-  return "bg-indigo-600";
+  if (entry.type === "BILL") return BILL_STATUS_COLOR[entry.displayStatus] ?? colors.textSecondary;
+  if (entry.type === "INCOME") return colors.financialPositive;
+  return colors.accentSecondary;
 }
 
 /** Monday-first 6-week grid so every month fits without a variable row count. */
@@ -67,7 +73,7 @@ export default function CalendarPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [viewDate, setViewDate] = useState(() => new Date());
-  const [entries, setEntries] = useState<CalendarEntry[]>([]);
+  const [entries, setEntries] = useState<CalendarEntry[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,7 +103,7 @@ export default function CalendarPage() {
 
   const entriesByDate = useMemo(() => {
     const map = new Map<string, CalendarEntry[]>();
-    for (const entry of entries) {
+    for (const entry of entries ?? []) {
       const bucket = map.get(entry.date) ?? [];
       bucket.push(entry);
       map.set(entry.date, bucket);
@@ -135,149 +141,162 @@ export default function CalendarPage() {
   const agendaDates = [...entriesByDate.keys()].sort();
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
+    <AppShell>
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{monthLabel}</h1>
+        <h1 className="text-xl font-semibold text-text-primary">{monthLabel}</h1>
         <div className="flex gap-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={() =>
               setViewDate(
                 (current) =>
                   new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1)),
               )
             }
-            className="rounded border px-3 py-1 text-sm"
           >
             Previous
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="secondary"
             onClick={() =>
               setViewDate(
                 (current) =>
                   new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 1)),
               )
             }
-            className="rounded border px-3 py-1 text-sm"
           >
             Next
-          </button>
+          </Button>
         </div>
       </div>
-      {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+      {errorMessage && <ErrorState message={errorMessage} />}
 
-      <div className="grid grid-cols-7 gap-1 text-center text-xs">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
-          <div key={label} className="font-medium text-gray-500">
-            {label}
-          </div>
-        ))}
-        {monthGrid.map((date) => {
-          const iso = toIsoDate(date);
-          const dayEntries = entriesByDate.get(iso) ?? [];
-          const isCurrentMonth = date.getUTCMonth() === currentMonth;
-          return (
-            <a
-              key={iso}
-              href={`#day-${iso}`}
-              className={`flex min-h-16 flex-col gap-1 rounded border p-1 ${
-                isCurrentMonth ? "bg-white" : "bg-gray-50 text-gray-400"
-              } ${iso === today ? "border-black" : "border-gray-200"}`}
-            >
-              <span>{date.getUTCDate()}</span>
-              <div className="flex flex-wrap justify-center gap-1">
-                {dayEntries.slice(0, 4).map((entry) => (
-                  <span
-                    key={entryKey(entry)}
-                    className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`}
-                  />
-                ))}
+      {entries === null ? (
+        <LoadingState message="Loading calendar…" />
+      ) : (
+        <>
+          <div className="grid grid-cols-7 gap-1 text-center text-xs">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+              <div key={label} className="font-medium text-text-secondary">
+                {label}
               </div>
-            </a>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-col gap-4">
-        {agendaDates.length === 0 && (
-          <p className="text-sm text-gray-500">Nothing on the calendar this month.</p>
-        )}
-        {agendaDates.map((date) => (
-          <section key={date} id={`day-${date}`}>
-            <h2 className="mb-1 text-sm font-medium">
-              {new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
-                weekday: "short",
-                day: "numeric",
-                month: "short",
-                timeZone: "UTC",
-              })}
-            </h2>
-            <ul className="flex flex-col gap-1">
-              {entriesByDate.get(date)!.map((entry) => (
-                <li
-                  key={entryKey(entry)}
-                  className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+            ))}
+            {monthGrid.map((date) => {
+              const iso = toIsoDate(date);
+              const dayEntries = entriesByDate.get(iso) ?? [];
+              const isCurrentMonth = date.getUTCMonth() === currentMonth;
+              return (
+                <a
+                  key={iso}
+                  href={`#day-${iso}`}
+                  className={`flex min-h-16 flex-col gap-1 rounded-md border p-1 ${
+                    isCurrentMonth
+                      ? "bg-surface text-text-primary"
+                      : "bg-background text-text-secondary"
+                  } ${iso === today ? "border-accent-primary" : "border-border"}`}
                 >
-                  {entry.type === "BILL" && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <span className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`} />
-                        <span>{entry.name}</span>
-                        <span className="text-xs text-gray-500">
-                          {BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span>${minorUnitsToDollars(entry.amountMinorUnits)}</span>
-                        {entry.displayStatus !== "PAID" && entry.displayStatus !== "SKIPPED" && (
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => onPay(entry.billId, entry.occurrenceId)}
-                              className="underline"
-                            >
-                              Pay
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onSkip(entry.billId, entry.occurrenceId)}
-                              className="underline"
-                            >
-                              Skip
-                            </button>
+                  <span>{date.getUTCDate()}</span>
+                  <div className="flex flex-wrap justify-center gap-1">
+                    {dayEntries.slice(0, 4).map((entry) => (
+                      <span
+                        key={entryKey(entry)}
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: entryDotColor(entry) }}
+                      />
+                    ))}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col gap-4">
+            {agendaDates.length === 0 && (
+              <p className="text-sm text-text-secondary">Nothing on the calendar this month.</p>
+            )}
+            {agendaDates.map((date) => (
+              <section key={date} id={`day-${date}`}>
+                <h2 className="mb-1 text-sm font-medium text-text-primary">
+                  {new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    timeZone: "UTC",
+                  })}
+                </h2>
+                <ul className="flex flex-col gap-1">
+                  {entriesByDate.get(date)!.map((entry) => (
+                    <li
+                      key={entryKey(entry)}
+                      className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary"
+                    >
+                      {entry.type === "BILL" && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span>{entry.name}</span>
+                            <StatusDot
+                              color={entryDotColor(entry)}
+                              label={BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
+                            />
                           </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                  {entry.type === "INCOME" && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <span className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`} />
-                        <span>{entry.merchant ?? entry.description ?? "Income"}</span>
-                      </div>
-                      <span className="text-green-700">
-                        +${minorUnitsToDollars(entry.amountMinorUnits)}
-                      </span>
-                    </>
-                  )}
-                  {entry.type === "SAVINGS_CONTRIBUTION" && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <span className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`} />
-                        <span>{entry.goalName}</span>
-                        <span className="text-xs text-gray-500">Savings contribution</span>
-                      </div>
-                      <span>${minorUnitsToDollars(entry.amountMinorUnits)}</span>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-    </main>
+                          <div className="flex items-center gap-3">
+                            <span className="tabular-nums">
+                              ${minorUnitsToDollars(entry.amountMinorUnits)}
+                            </span>
+                            {entry.displayStatus !== "PAID" &&
+                              entry.displayStatus !== "SKIPPED" && (
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onPay(entry.billId, entry.occurrenceId)}
+                                    className="text-accent-primary underline underline-offset-2"
+                                  >
+                                    Pay
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onSkip(entry.billId, entry.occurrenceId)}
+                                    className="text-text-secondary underline underline-offset-2"
+                                  >
+                                    Skip
+                                  </button>
+                                </div>
+                              )}
+                          </div>
+                        </>
+                      )}
+                      {entry.type === "INCOME" && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <StatusDot color={entryDotColor(entry)} label="Income" />
+                            <span>{entry.merchant ?? entry.description ?? "Income"}</span>
+                          </div>
+                          <span className="tabular-nums text-financial-positive">
+                            +${minorUnitsToDollars(entry.amountMinorUnits)}
+                          </span>
+                        </>
+                      )}
+                      {entry.type === "SAVINGS_CONTRIBUTION" && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <StatusDot color={entryDotColor(entry)} label="Savings contribution" />
+                            <span>{entry.goalName}</span>
+                          </div>
+                          <span className="tabular-nums">
+                            ${minorUnitsToDollars(entry.amountMinorUnits)}
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </>
+      )}
+    </AppShell>
   );
 }

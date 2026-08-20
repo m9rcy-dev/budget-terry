@@ -14,6 +14,13 @@ import {
 } from "recharts";
 import type { Account, AnalyticsSummary, Category } from "@budget-terry/types";
 import { getAnalyticsSummary, listAccounts, listCategories } from "@budget-terry/api-client";
+import { colors } from "@budget-terry/ui";
+import { AppShell } from "../../components/AppShell";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { Input, Select } from "../../components/Field";
+import { LoadingState } from "../../components/LoadingState";
+import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -113,200 +120,187 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <h1 className="text-xl font-semibold">Analytics</h1>
+    <AppShell>
+      <h1 className="text-xl font-semibold text-text-primary">Analytics</h1>
 
-      <div className="flex flex-wrap gap-2 rounded border p-4 text-sm">
-        <label className="flex flex-col gap-1">
-          From
-          <input
-            type="date"
-            value={from}
-            onChange={(event) => setFrom(event.target.value)}
-            className="rounded border px-2 py-1"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          To
-          <input
-            type="date"
-            value={to}
-            onChange={(event) => setTo(event.target.value)}
-            className="rounded border px-2 py-1"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          Account
-          <select
-            value={accountId}
-            onChange={(event) => setAccountId(event.target.value)}
-            className="rounded border px-2 py-1"
-          >
-            <option value="">All accounts</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          Category
-          <select
-            value={categoryId}
-            onChange={(event) => setCategoryId(event.target.value)}
-            className="rounded border px-2 py-1"
-          >
-            <option value="">All categories</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <Section>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <label className="flex flex-col gap-1 text-text-secondary">
+            From
+            <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1 text-text-secondary">
+            To
+            <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1 text-text-secondary">
+            Account
+            <Select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+              <option value="">All accounts</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-text-secondary">
+            Category
+            <Select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+              <option value="">All categories</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+      </Section>
 
-      {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+      {errorMessage && <ErrorState message={errorMessage} />}
 
-      {summary && (
+      {!summary ? (
+        <LoadingState message="Loading analytics…" />
+      ) : (
         <>
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">Spending by category</h2>
+          <Section title="Spending by category">
             {spendingByCategoryData.length === 0 ? (
-              <p className="mt-2 text-sm text-gray-500">No spending in this range.</p>
+              <EmptyState message="No spending in this range." />
             ) : (
-              <div className="mt-2 h-64 w-full">
+              <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={spendingByCategoryData} layout="vertical" margin={{ left: 24 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" tickFormatter={formatDollars} />
-                    <YAxis type="category" dataKey="name" width={100} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis
+                      type="number"
+                      tickFormatter={formatDollars}
+                      stroke={colors.textSecondary}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={100}
+                      stroke={colors.textSecondary}
+                    />
                     <Tooltip formatter={(value) => formatDollars(Number(value))} />
-                    <Bar dataKey="amount" name="Spent" fill="#111827" />
+                    <Bar dataKey="amount" name="Spent" fill={colors.accentPrimary} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
-          </section>
+          </Section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">Income vs expenses</h2>
+          <Section title="Income vs expenses">
             {incomeVsExpensesData.length === 0 ? (
-              <p className="mt-2 text-sm text-gray-500">No transactions in this range.</p>
+              <EmptyState message="No transactions in this range." />
             ) : (
-              <div className="mt-2 h-64 w-full">
+              <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={incomeVsExpensesData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis tickFormatter={formatDollars} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis dataKey="month" stroke={colors.textSecondary} />
+                    <YAxis tickFormatter={formatDollars} stroke={colors.textSecondary} />
                     <Tooltip formatter={(value) => formatDollars(Number(value))} />
                     <Legend />
-                    <Bar dataKey="Income" fill="#16a34a" />
-                    <Bar dataKey="Expenses" fill="#b91c1c" />
+                    <Bar dataKey="Income" fill={colors.financialPositive} />
+                    <Bar dataKey="Expenses" fill={colors.financialNegative} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
-          </section>
+          </Section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">
-              Budget vs actual (current period)
-            </h2>
+          <Section title="Budget vs actual (current period)">
             {budgetVsActualData.length === 0 ? (
-              <p className="mt-2 text-sm text-gray-500">No overall budgets set up.</p>
+              <EmptyState message="No overall budgets set up." />
             ) : (
-              <div className="mt-2 h-64 w-full">
+              <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={budgetVsActualData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis tickFormatter={formatDollars} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                    <XAxis dataKey="name" stroke={colors.textSecondary} />
+                    <YAxis tickFormatter={formatDollars} stroke={colors.textSecondary} />
                     <Tooltip formatter={(value) => formatDollars(Number(value))} />
                     <Legend />
-                    <Bar dataKey="Budgeted" fill="#9ca3af" />
-                    <Bar dataKey="Spent" fill="#111827" />
+                    <Bar dataKey="Budgeted" fill={colors.accentSecondary} />
+                    <Bar dataKey="Spent" fill={colors.accentPrimary} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
-          </section>
+          </Section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">Highest expense categories</h2>
-            <ul className="mt-2 flex flex-col gap-1 text-sm">
+          <Section title="Highest expense categories">
+            <ul className="flex flex-col gap-1 text-sm text-text-primary">
               {summary.highestExpenseCategories.map((entry) => (
                 <li key={entry.categoryId} className="flex justify-between">
                   <span>{entry.categoryName}</span>
-                  <span>${minorUnitsToDollars(entry.totalMinorUnits).toFixed(2)}</span>
+                  <span className="tabular-nums">
+                    ${minorUnitsToDollars(entry.totalMinorUnits).toFixed(2)}
+                  </span>
                 </li>
               ))}
               {summary.highestExpenseCategories.length === 0 && (
-                <p className="text-gray-500">No spending in this range.</p>
+                <EmptyState message="No spending in this range." />
               )}
             </ul>
-          </section>
+          </Section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">
-              Recurring expenses (monthly equivalent)
-            </h2>
-            <ul className="mt-2 flex flex-col gap-1 text-sm">
+          <Section title="Recurring expenses (monthly equivalent)">
+            <ul className="flex flex-col gap-1 text-sm text-text-primary">
               {summary.recurringExpenseSummary.map((entry) => (
                 <li key={entry.billId} className="flex justify-between">
                   <span>
-                    {entry.name} <span className="text-xs text-gray-500">({entry.recurrence})</span>
+                    {entry.name}{" "}
+                    <span className="text-xs text-text-secondary">({entry.recurrence})</span>
                   </span>
-                  <span>
+                  <span className="tabular-nums">
                     ${minorUnitsToDollars(entry.monthlyEquivalentMinorUnits).toFixed(2)}/mo
                   </span>
                 </li>
               ))}
               {summary.recurringExpenseSummary.length === 0 && (
-                <p className="text-gray-500">No recurring bills.</p>
+                <EmptyState message="No recurring bills." />
               )}
             </ul>
-          </section>
+          </Section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">Savings contributions</h2>
-            <p className="mt-1 text-sm">
+          <Section title="Savings contributions">
+            <p className="tabular-nums text-sm text-text-primary">
               ${minorUnitsToDollars(summary.savingsContributions.totalMinorUnits).toFixed(2)} total
               in this range
             </p>
-            <ul className="mt-2 flex flex-col gap-1 text-sm">
+            <ul className="flex flex-col gap-1 text-sm text-text-primary">
               {summary.savingsContributions.byGoal.map((entry) => (
                 <li key={entry.goalId} className="flex justify-between">
                   <span>{entry.goalName}</span>
-                  <span>${minorUnitsToDollars(entry.totalMinorUnits).toFixed(2)}</span>
+                  <span className="tabular-nums">
+                    ${minorUnitsToDollars(entry.totalMinorUnits).toFixed(2)}
+                  </span>
                 </li>
               ))}
             </ul>
-          </section>
+          </Section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">Goal progress (active goals)</h2>
-            <p className="mt-1 text-sm">
+          <Section title="Goal progress (active goals)">
+            <p className="tabular-nums text-sm text-text-primary">
               ${minorUnitsToDollars(summary.goalProgress.totalSavedMinorUnits).toFixed(2)} saved of
               ${minorUnitsToDollars(summary.goalProgress.totalTargetMinorUnits).toFixed(2)} (
               {summary.goalProgress.overallPercentage}%)
             </p>
-            <ul className="mt-2 flex flex-col gap-1 text-sm">
+            <ul className="flex flex-col gap-1 text-sm text-text-primary">
               {summary.goalProgress.goals.map((goal) => (
                 <li key={goal.id} className="flex justify-between">
                   <span>{goal.name}</span>
-                  <span>{goal.percentageComplete}%</span>
+                  <span className="tabular-nums">{goal.percentageComplete}%</span>
                 </li>
               ))}
-              {summary.goalProgress.goals.length === 0 && (
-                <p className="text-gray-500">No active goals.</p>
-              )}
+              {summary.goalProgress.goals.length === 0 && <EmptyState message="No active goals." />}
             </ul>
-          </section>
+          </Section>
         </>
       )}
-    </main>
+    </AppShell>
   );
 }

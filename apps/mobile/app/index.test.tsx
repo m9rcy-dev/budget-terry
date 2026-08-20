@@ -6,6 +6,7 @@ jest.mock("expo-router", () => {
   const { Text } = jest.requireActual("react-native");
   return {
     useRouter: () => ({ replace: mockReplace }),
+    usePathname: () => "/",
     Link: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
   };
 });

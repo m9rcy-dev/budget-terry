@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { DashboardSummary } from "@budget-terry/types";
 import { getDashboardSummary } from "@budget-terry/api-client";
+import { AppShell } from "../../components/AppShell";
+import { EmptyState } from "../../components/EmptyState";
+import { LoadingState } from "../../components/LoadingState";
+import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -16,7 +19,7 @@ function minorUnitsToDollars(value: number): string {
 }
 
 export default function DashboardPage() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
 
@@ -42,81 +45,71 @@ export default function DashboardPage() {
     : 1;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <div>
-        <p className="text-lg">
-          Logged in as {user.displayName} ({user.email})
-        </p>
-        <nav className="mt-2 flex gap-4 text-sm underline">
-          <Link href="/transactions">Transactions</Link>
-          <Link href="/accounts">Accounts</Link>
-          <Link href="/categories">Categories</Link>
-          <Link href="/budgets">Budgets</Link>
-          <Link href="/bills">Bills</Link>
-          <Link href="/calendar">Calendar</Link>
-          <Link href="/goals">Goals</Link>
-          <Link href="/analytics">Analytics</Link>
-        </nav>
-      </div>
-
-      {summary && (
+    <AppShell>
+      {!summary ? (
+        <LoadingState message="Loading your dashboard…" />
+      ) : (
         <>
-          <section className="grid grid-cols-3 gap-4 rounded border p-4 text-center">
+          <div className="grid grid-cols-3 gap-4 rounded-lg border border-border bg-surface p-4 text-center">
             <div>
-              <p className="text-xs text-gray-500">Income</p>
-              <p className="text-lg font-semibold text-green-700">
+              <p className="text-xs text-text-secondary">Income</p>
+              <p className="tabular-nums text-lg font-semibold text-financial-positive">
                 ${minorUnitsToDollars(summary.incomeMinorUnits)}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Expenses</p>
-              <p className="text-lg font-semibold text-red-700">
+              <p className="text-xs text-text-secondary">Expenses</p>
+              <p className="tabular-nums text-lg font-semibold text-financial-negative">
                 ${minorUnitsToDollars(summary.expensesMinorUnits)}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Remaining</p>
-              <p className="text-lg font-semibold">${minorUnitsToDollars(summary.netMinorUnits)}</p>
+              <p className="text-xs text-text-secondary">Remaining</p>
+              <p className="tabular-nums text-lg font-semibold text-text-primary">
+                ${minorUnitsToDollars(summary.netMinorUnits)}
+              </p>
             </div>
-          </section>
-          <p className="text-xs text-gray-500">
+          </div>
+          <p className="text-xs text-text-secondary">
             {summary.period.from} – {summary.period.to}
           </p>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">Spending by category</h2>
-            <ul className="mt-2 flex flex-col gap-2">
+          <Section title="Spending by category">
+            <ul className="flex flex-col gap-2">
               {summary.categoryTotals.map((entry) => (
                 <li key={entry.categoryId} className="flex flex-col gap-1">
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-sm text-text-primary">
                     <span>{entry.categoryName}</span>
-                    <span>${minorUnitsToDollars(entry.totalMinorUnits)}</span>
+                    <span className="tabular-nums">
+                      ${minorUnitsToDollars(entry.totalMinorUnits)}
+                    </span>
                   </div>
-                  <div className="h-2 rounded bg-gray-100">
+                  <div className="h-2 rounded-full bg-background">
                     <div
-                      className="h-2 rounded bg-black"
+                      className="h-2 rounded-full bg-accent-primary"
                       style={{ width: `${(entry.totalMinorUnits / maxCategoryTotal) * 100}%` }}
                     />
                   </div>
                 </li>
               ))}
-              {summary.categoryTotals.length === 0 && (
-                <p className="text-sm text-gray-500">No spending yet.</p>
-              )}
+              {summary.categoryTotals.length === 0 && <EmptyState message="No spending yet." />}
             </ul>
-          </section>
+          </Section>
 
-          <section>
-            <h2 className="text-sm font-semibold text-gray-600">Recent transactions</h2>
-            <ul className="mt-2 flex flex-col gap-1">
+          <Section title="Recent transactions">
+            <ul className="flex flex-col gap-1">
               {summary.recentTransactions.map((transaction) => (
-                <li key={transaction.id} className="flex justify-between text-sm">
+                <li key={transaction.id} className="flex justify-between text-sm text-text-primary">
                   <span>
                     {transaction.transactionDate.slice(0, 10)}
                     {transaction.merchant ? ` · ${transaction.merchant}` : ""}
                   </span>
                   <span
-                    className={transaction.type === "EXPENSE" ? "text-red-700" : "text-green-700"}
+                    className={
+                      transaction.type === "EXPENSE"
+                        ? "tabular-nums text-financial-negative"
+                        : "tabular-nums text-financial-positive"
+                    }
                   >
                     {transaction.type === "EXPENSE" ? "-" : "+"}$
                     {minorUnitsToDollars(transaction.amountMinorUnits)}
@@ -124,23 +117,12 @@ export default function DashboardPage() {
                 </li>
               ))}
               {summary.recentTransactions.length === 0 && (
-                <p className="text-sm text-gray-500">No transactions yet.</p>
+                <EmptyState message="No transactions yet." />
               )}
             </ul>
-          </section>
+          </Section>
         </>
       )}
-
-      <button
-        type="button"
-        onClick={async () => {
-          await logout();
-          router.push("/login");
-        }}
-        className="rounded bg-black px-3 py-2 text-white"
-      >
-        Log out
-      </button>
-    </main>
+    </AppShell>
   );
 }

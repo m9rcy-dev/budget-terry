@@ -1,8 +1,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Budget, Category } from "@budget-terry/types";
 import { createBudget, deleteBudget, listBudgets, listCategories } from "@budget-terry/api-client";
+import { colors, radius, spacing } from "@budget-terry/ui";
+import { Button } from "../components/Button";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { LoadingState } from "../components/LoadingState";
+import { Screen } from "../components/Screen";
+import { Section } from "../components/Section";
+import { TextField } from "../components/TextField";
 import { apiClient } from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
 
@@ -17,9 +25,9 @@ function minorUnitsToDollars(value: number): string {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  HEALTHY: "#16a34a",
-  APPROACHING: "#d97706",
-  EXCEEDED: "#b91c1c",
+  HEALTHY: colors.budgetHealthy,
+  APPROACHING: colors.budgetApproaching,
+  EXCEEDED: colors.budgetExceeded,
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -41,7 +49,7 @@ function StatusBar({ status, percentageUsed }: { status: string; percentageUsed:
             styles.barFill,
             {
               width: `${Math.min(100, percentageUsed)}%`,
-              backgroundColor: STATUS_COLOR[status] ?? "#999",
+              backgroundColor: STATUS_COLOR[status] ?? colors.textSecondary,
             },
           ]}
         />
@@ -53,7 +61,7 @@ function StatusBar({ status, percentageUsed }: { status: string; percentageUsed:
 export default function BudgetsScreen() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgets, setBudgets] = useState<Budget[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -130,178 +138,165 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Budgets</Text>
-
-      <View style={styles.row}>
-        {PERIODS.map((p) => (
-          <Pressable
-            key={p}
-            onPress={() => setPeriod(p)}
-            style={[styles.chip, period === p && styles.chipSelected]}
-          >
-            <Text style={period === p ? styles.chipTextSelected : styles.chipText}>{p}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <View style={styles.row}>
-        <Pressable
-          onPress={() => setMode("overall")}
-          style={[styles.chip, mode === "overall" && styles.chipSelected]}
-        >
-          <Text style={mode === "overall" ? styles.chipTextSelected : styles.chipText}>
-            Overall
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setMode("perCategory")}
-          style={[styles.chip, mode === "perCategory" && styles.chipSelected]}
-        >
-          <Text style={mode === "perCategory" ? styles.chipTextSelected : styles.chipText}>
-            Per category
-          </Text>
-        </Pressable>
-      </View>
-
-      {mode === "overall" ? (
-        <TextInput
-          placeholder="Total amount"
-          keyboardType="decimal-pad"
-          value={totalAmount}
-          onChangeText={setTotalAmount}
-          style={styles.input}
-        />
-      ) : (
-        <View style={{ gap: 8 }}>
-          <View style={styles.row}>
-            {categories.map((category) => (
-              <Pressable
-                key={category.id}
-                onPress={() => toggleCategory(category.id)}
-                style={[
-                  styles.chip,
-                  selectedCategoryIds.includes(category.id) && styles.chipSelected,
-                ]}
-              >
-                <Text
-                  style={
-                    selectedCategoryIds.includes(category.id)
-                      ? styles.chipTextSelected
-                      : styles.chipText
-                  }
-                >
-                  {category.name}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          {selectedCategoryIds.map((categoryId) => (
-            <View key={categoryId} style={styles.allocationRow}>
-              <Text style={styles.allocationLabel}>
-                {categories.find((category) => category.id === categoryId)?.name}
-              </Text>
-              <TextInput
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                value={categoryAmounts[categoryId] ?? ""}
-                onChangeText={(value) =>
-                  setCategoryAmounts((current) => ({ ...current, [categoryId]: value }))
-                }
-                style={styles.allocationInput}
-              />
-            </View>
+    <Screen title="Budgets">
+      <Section title="New budget">
+        <View style={styles.row}>
+          {PERIODS.map((p) => (
+            <Pressable
+              key={p}
+              onPress={() => setPeriod(p)}
+              style={[styles.chip, period === p && styles.chipSelected]}
+            >
+              <Text style={period === p ? styles.chipTextSelected : styles.chipText}>{p}</Text>
+            </Pressable>
           ))}
         </View>
-      )}
 
-      <Pressable style={styles.button} onPress={onCreate}>
-        <Text style={styles.buttonText}>Create budget</Text>
-      </Pressable>
-      {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+        <View style={styles.row}>
+          <Pressable
+            onPress={() => setMode("overall")}
+            style={[styles.chip, mode === "overall" && styles.chipSelected]}
+          >
+            <Text style={mode === "overall" ? styles.chipTextSelected : styles.chipText}>
+              Overall
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode("perCategory")}
+            style={[styles.chip, mode === "perCategory" && styles.chipSelected]}
+          >
+            <Text style={mode === "perCategory" ? styles.chipTextSelected : styles.chipText}>
+              Per category
+            </Text>
+          </Pressable>
+        </View>
 
-      <FlatList
-        data={budgets}
-        keyExtractor={(item) => item.id}
-        style={styles.list}
-        ListEmptyComponent={<Text style={styles.empty}>No budgets yet.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.budgetCard}>
-            <View style={styles.budgetHeader}>
-              <Text style={styles.budgetName}>{item.name ?? `${item.period} budget`}</Text>
-              <Pressable onPress={() => onDelete(item.id)}>
-                <Text style={styles.link}>Delete</Text>
-              </Pressable>
+        {mode === "overall" ? (
+          <TextField
+            placeholder="Total amount"
+            keyboardType="decimal-pad"
+            value={totalAmount}
+            onChangeText={setTotalAmount}
+          />
+        ) : (
+          <View style={{ gap: spacing.sm }}>
+            <View style={styles.row}>
+              {categories.map((category) => (
+                <Pressable
+                  key={category.id}
+                  onPress={() => toggleCategory(category.id)}
+                  style={[
+                    styles.chip,
+                    selectedCategoryIds.includes(category.id) && styles.chipSelected,
+                  ]}
+                >
+                  <Text
+                    style={
+                      selectedCategoryIds.includes(category.id)
+                        ? styles.chipTextSelected
+                        : styles.chipText
+                    }
+                  >
+                    {category.name}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
-
-            {item.status !== null && (
-              <>
-                <StatusBar status={item.status} percentageUsed={item.percentageUsed ?? 0} />
-                <Text style={styles.amountText}>
-                  ${minorUnitsToDollars(item.spentMinorUnits ?? 0)} of $
-                  {minorUnitsToDollars(item.totalAmountMinorUnits ?? 0)}
+            {selectedCategoryIds.map((categoryId) => (
+              <View key={categoryId} style={styles.allocationRow}>
+                <Text style={styles.allocationLabel}>
+                  {categories.find((category) => category.id === categoryId)?.name}
                 </Text>
-              </>
-            )}
-
-            {item.categories.map((entry) => (
-              <View key={entry.categoryId} style={{ marginTop: 8 }}>
-                <Text style={styles.allocationLabel}>{entry.categoryName}</Text>
-                <StatusBar status={entry.status} percentageUsed={entry.percentageUsed} />
-                <Text style={styles.amountText}>
-                  ${minorUnitsToDollars(entry.spentMinorUnits)} of $
-                  {minorUnitsToDollars(entry.amountMinorUnits)}
-                </Text>
+                <TextField
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  value={categoryAmounts[categoryId] ?? ""}
+                  onChangeText={(value) =>
+                    setCategoryAmounts((current) => ({ ...current, [categoryId]: value }))
+                  }
+                  style={styles.allocationInput}
+                />
               </View>
             ))}
           </View>
         )}
-      />
-    </View>
+
+        <Button onPress={onCreate}>Create budget</Button>
+        {errorMessage && <ErrorState message={errorMessage} />}
+      </Section>
+
+      {budgets === null ? (
+        <LoadingState message="Loading budgets…" />
+      ) : (
+        <FlatList
+          data={budgets}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          ListEmptyComponent={<EmptyState message="No budgets yet." />}
+          renderItem={({ item }) => (
+            <View style={styles.budgetCard}>
+              <View style={styles.budgetHeader}>
+                <Text style={styles.budgetName}>{item.name ?? `${item.period} budget`}</Text>
+                <Pressable onPress={() => onDelete(item.id)}>
+                  <Text style={styles.link}>Delete</Text>
+                </Pressable>
+              </View>
+
+              {item.status !== null && (
+                <>
+                  <StatusBar status={item.status} percentageUsed={item.percentageUsed ?? 0} />
+                  <Text style={styles.amountText}>
+                    ${minorUnitsToDollars(item.spentMinorUnits ?? 0)} of $
+                    {minorUnitsToDollars(item.totalAmountMinorUnits ?? 0)}
+                  </Text>
+                </>
+              )}
+
+              {item.categories.map((entry) => (
+                <View key={entry.categoryId} style={{ marginTop: spacing.sm }}>
+                  <Text style={styles.allocationLabel}>{entry.categoryName}</Text>
+                  <StatusBar status={entry.status} percentageUsed={entry.percentageUsed} />
+                  <Text style={styles.amountText}>
+                    ${minorUnitsToDollars(entry.spentMinorUnits)} of $
+                    {minorUnitsToDollars(entry.amountMinorUnits)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        />
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, gap: 8 },
-  title: { fontSize: 20, fontWeight: "600" },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs + 4 },
   chip: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: spacing.xs,
   },
-  chipSelected: { backgroundColor: "#111", borderColor: "#111" },
-  chipText: { fontSize: 12 },
-  chipTextSelected: { fontSize: 12, color: "#fff" },
-  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 12 },
-  allocationRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  allocationLabel: { fontSize: 13, width: 100 },
-  allocationInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 8,
-  },
-  button: { backgroundColor: "#111", borderRadius: 8, padding: 14, alignItems: "center" },
-  buttonText: { color: "#fff", fontWeight: "600" },
-  error: { color: "#b91c1c", fontSize: 13 },
-  list: { marginTop: 12 },
+  chipSelected: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+  chipText: { fontSize: 12, color: colors.textPrimary },
+  chipTextSelected: { fontSize: 12, color: "#FFFFFF" },
+  allocationRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs + 4 },
+  allocationLabel: { fontSize: 13, width: 100, color: colors.textPrimary },
+  allocationInput: { flex: 1 },
   budgetCard: {
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + 4,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    gap: 4,
+    borderBottomColor: colors.border,
+    gap: spacing.xs,
   },
   budgetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  budgetName: { fontSize: 15, fontWeight: "600" },
+  budgetName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
   statusRow: { flexDirection: "row", justifyContent: "space-between" },
-  statusLabel: { fontSize: 12, color: "#70746F" },
-  barTrack: { height: 8, borderRadius: 4, backgroundColor: "#f3f4f6" },
+  statusLabel: { fontSize: 12, color: colors.textSecondary },
+  barTrack: { height: 8, borderRadius: 4, backgroundColor: colors.background },
   barFill: { height: 8, borderRadius: 4 },
-  amountText: { fontSize: 12, color: "#70746F" },
-  link: { textDecorationLine: "underline" },
-  empty: { color: "#70746F", fontSize: 14 },
+  amountText: { fontSize: 12, color: colors.textSecondary },
+  link: { textDecorationLine: "underline", color: colors.financialNegative },
 });

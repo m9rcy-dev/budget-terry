@@ -12,6 +12,13 @@ import {
   updateTransaction,
   type ListTransactionsOptions,
 } from "@budget-terry/api-client";
+import { AppShell } from "../../components/AppShell";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { Input, Select } from "../../components/Field";
+import { LoadingState } from "../../components/LoadingState";
+import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -31,7 +38,7 @@ export default function TransactionsPage() {
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<{ type?: "INCOME" | "EXPENSE"; search?: string }>({});
@@ -132,84 +139,85 @@ export default function TransactionsPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-xl font-semibold">Transactions</h1>
+    <AppShell>
+      <h1 className="text-xl font-semibold text-text-primary">Transactions</h1>
 
-      <form onSubmit={onCreate} className="flex flex-col gap-2 rounded border p-4">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setType("EXPENSE")}
-            className={`rounded px-3 py-1 text-sm ${type === "EXPENSE" ? "bg-black text-white" : "border"}`}
-          >
-            Expense
-          </button>
-          <button
-            type="button"
-            onClick={() => setType("INCOME")}
-            className={`rounded px-3 py-1 text-sm ${type === "INCOME" ? "bg-black text-white" : "border"}`}
-          >
-            Income
-          </button>
-        </div>
+      <Section>
+        <form onSubmit={onCreate} className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={type === "EXPENSE" ? "primary" : "secondary"}
+              onClick={() => setType("EXPENSE")}
+            >
+              Expense
+            </Button>
+            <Button
+              type="button"
+              variant={type === "INCOME" ? "primary" : "secondary"}
+              onClick={() => setType("INCOME")}
+            >
+              Income
+            </Button>
+          </div>
 
-        <select
-          value={accountId}
-          onChange={(event) => setAccountId(event.target.value)}
-          className="rounded border px-3 py-2"
-        >
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </select>
-
-        {type === "EXPENSE" && (
-          <select
-            value={categoryId}
-            onChange={(event) => setCategoryId(event.target.value)}
-            className="rounded border px-3 py-2"
+          <Select
+            aria-label="Account"
+            value={accountId}
+            onChange={(event) => setAccountId(event.target.value)}
           >
-            <option value="">No category</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
               </option>
             ))}
-          </select>
-        )}
+          </Select>
 
-        <input
-          type="number"
-          step="0.01"
-          placeholder="Amount"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          className="rounded border px-3 py-2"
-          required
-        />
-        <input
-          type="date"
-          value={transactionDate}
-          onChange={(event) => setTransactionDate(event.target.value)}
-          className="rounded border px-3 py-2"
-          required
-        />
-        <input
-          placeholder="Merchant (optional)"
-          value={merchant}
-          onChange={(event) => setMerchant(event.target.value)}
-          className="rounded border px-3 py-2"
-        />
-        <button type="submit" className="rounded bg-black px-3 py-2 text-white">
-          Add {type === "EXPENSE" ? "expense" : "income"}
-        </button>
-        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-      </form>
+          {type === "EXPENSE" && (
+            <Select
+              aria-label="Category"
+              value={categoryId}
+              onChange={(event) => setCategoryId(event.target.value)}
+            >
+              <option value="">No category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
+          )}
+
+          <Input
+            aria-label="Amount"
+            type="number"
+            step="0.01"
+            placeholder="Amount"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            required
+          />
+          <Input
+            aria-label="Transaction date"
+            type="date"
+            value={transactionDate}
+            onChange={(event) => setTransactionDate(event.target.value)}
+            required
+          />
+          <Input
+            aria-label="Merchant (optional)"
+            placeholder="Merchant (optional)"
+            value={merchant}
+            onChange={(event) => setMerchant(event.target.value)}
+          />
+          <Button type="submit">Add {type === "EXPENSE" ? "expense" : "income"}</Button>
+          {errorMessage && <ErrorState message={errorMessage} />}
+        </form>
+      </Section>
 
       <div className="flex flex-wrap gap-2">
-        <select
+        <Select
+          aria-label="Filter by type"
           value={filters.type ?? ""}
           onChange={(event) => {
             setPage(1);
@@ -218,111 +226,121 @@ export default function TransactionsPage() {
               type: (event.target.value || undefined) as "INCOME" | "EXPENSE" | undefined,
             }));
           }}
-          className="rounded border px-2 py-1 text-sm"
+          className="text-sm"
         >
           <option value="">All types</option>
           <option value="EXPENSE">Expense</option>
           <option value="INCOME">Income</option>
-        </select>
-        <input
+        </Select>
+        <Input
+          aria-label="Search merchant or description"
           placeholder="Search merchant/description"
           onChange={(event) => {
             setPage(1);
             setFilters((current) => ({ ...current, search: event.target.value || undefined }));
           }}
-          className="rounded border px-2 py-1 text-sm"
+          className="text-sm"
         />
       </div>
 
-      <ul className="flex flex-col gap-2">
-        {transactions.map((transaction) => (
-          <li
-            key={transaction.id}
-            className="flex items-center justify-between rounded border px-3 py-2"
-          >
-            {editingId === transaction.id ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editAmount}
-                  onChange={(event) => setEditAmount(event.target.value)}
-                  className="w-24 rounded border px-2 py-1"
-                />
-                <button
-                  type="button"
-                  onClick={() => onSaveEdit(transaction.id)}
-                  className="text-sm underline"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditingId(null)}
-                  className="text-sm underline"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div>
-                <span
-                  className={transaction.type === "EXPENSE" ? "text-red-700" : "text-green-700"}
-                >
-                  {transaction.type === "EXPENSE" ? "-" : "+"}
-                  {minorUnitsToDollars(transaction.amountMinorUnits)}
-                </span>{" "}
-                <span className="text-sm text-gray-500">
-                  {transaction.transactionDate.slice(0, 10)} · {accountName(transaction.accountId)}{" "}
-                  · {categoryName(transaction.categoryId)}
-                  {transaction.merchant ? ` · ${transaction.merchant}` : ""}
-                </span>
-              </div>
-            )}
-            {editingId !== transaction.id && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => onStartEdit(transaction)}
-                  className="text-sm underline"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(transaction.id)}
-                  className="text-sm underline"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </li>
-        ))}
-        {transactions.length === 0 && <p className="text-sm text-gray-500">No transactions yet.</p>}
-      </ul>
+      {transactions === null ? (
+        <LoadingState message="Loading transactions…" />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {transactions.map((transaction) => (
+            <li
+              key={transaction.id}
+              className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2"
+            >
+              {editingId === transaction.id ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label="Edit amount"
+                    type="number"
+                    step="0.01"
+                    value={editAmount}
+                    onChange={(event) => setEditAmount(event.target.value)}
+                    className="w-24"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onSaveEdit(transaction.id)}
+                    className="text-sm text-accent-primary underline underline-offset-2"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    className="text-sm text-text-secondary underline underline-offset-2"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <span
+                    className={`tabular-nums ${
+                      transaction.type === "EXPENSE"
+                        ? "text-financial-negative"
+                        : "text-financial-positive"
+                    }`}
+                  >
+                    {transaction.type === "EXPENSE" ? "-" : "+"}
+                    {minorUnitsToDollars(transaction.amountMinorUnits)}
+                  </span>{" "}
+                  <span className="text-sm text-text-secondary">
+                    {transaction.transactionDate.slice(0, 10)} ·{" "}
+                    {accountName(transaction.accountId)} · {categoryName(transaction.categoryId)}
+                    {transaction.merchant ? ` · ${transaction.merchant}` : ""}
+                  </span>
+                </div>
+              )}
+              {editingId !== transaction.id && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onStartEdit(transaction)}
+                    className="text-sm text-accent-primary underline underline-offset-2"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(transaction.id)}
+                    className="text-sm text-financial-negative underline underline-offset-2"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+          {transactions.length === 0 && <EmptyState message="No transactions yet." />}
+        </ul>
+      )}
 
-      <div className="flex items-center gap-4 text-sm">
+      <div className="flex items-center gap-4 text-sm text-text-primary">
         <button
           type="button"
           disabled={page <= 1}
           onClick={() => setPage((current) => current - 1)}
-          className="underline disabled:opacity-40"
+          className="underline underline-offset-2 disabled:opacity-40"
         >
           Previous
         </button>
-        <span>
+        <span className="text-text-secondary">
           Page {page} of {totalPages}
         </span>
         <button
           type="button"
           disabled={page >= totalPages}
           onClick={() => setPage((current) => current + 1)}
-          className="underline disabled:opacity-40"
+          className="underline underline-offset-2 disabled:opacity-40"
         >
           Next
         </button>
       </div>
-    </main>
+    </AppShell>
   );
 }

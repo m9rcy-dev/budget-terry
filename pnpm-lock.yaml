@@ -132,6 +132,9 @@ importers:
       '@budget-terry/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@budget-terry/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@budget-terry/validation':
         specifier: workspace:*
         version: link:../../packages/validation
@@ -211,6 +214,9 @@ importers:
       '@budget-terry/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@budget-terry/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@budget-terry/validation':
         specifier: workspace:*
         version: link:../../packages/validation

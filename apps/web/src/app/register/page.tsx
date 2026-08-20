@@ -7,6 +7,9 @@ import { ApiError } from "@budget-terry/api-client";
 import { registerSchema, type RegisterInput } from "@budget-terry/validation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Button } from "../../components/Button";
+import { ErrorState } from "../../components/ErrorState";
+import { Field, Input } from "../../components/Field";
 import { useAuth } from "../../lib/auth-context";
 
 export default function RegisterPage() {
@@ -34,63 +37,31 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
       <form onSubmit={handleSubmit(onSubmit)} className="flex w-full max-w-sm flex-col gap-4">
-        <h1 className="text-xl font-semibold">Create an account</h1>
+        <h1 className="text-xl font-semibold text-text-primary">Create an account</h1>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="displayName" className="text-sm">
-            Name
-          </label>
-          <input
-            id="displayName"
-            className="rounded border px-3 py-2"
-            {...register("displayName")}
-          />
-          {errors.displayName && (
-            <p className="text-sm text-red-600">{errors.displayName.message}</p>
-          )}
-        </div>
+        <Field label="Name" htmlFor="displayName" error={errors.displayName?.message}>
+          <Input id="displayName" {...register("displayName")} />
+        </Field>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="email" className="text-sm">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            className="rounded border px-3 py-2"
-            {...register("email")}
-          />
-          {errors.email && <p className="text-sm text-red-600">{errors.email.message}</p>}
-        </div>
+        <Field label="Email" htmlFor="email" error={errors.email?.message}>
+          <Input id="email" type="email" {...register("email")} />
+        </Field>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="password" className="text-sm">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            className="rounded border px-3 py-2"
-            {...register("password")}
-          />
-          {errors.password && <p className="text-sm text-red-600">{errors.password.message}</p>}
-        </div>
+        <Field label="Password" htmlFor="password" error={errors.password?.message}>
+          <Input id="password" type="password" {...register("password")} />
+        </Field>
 
-        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+        {errorMessage && <ErrorState message={errorMessage} />}
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Creating account..." : "Create account"}
-        </button>
+        </Button>
 
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-secondary">
           Already have an account?{" "}
-          <Link href="/login" className="underline">
+          <Link href="/login" className="text-accent-primary underline underline-offset-2">
             Log in
           </Link>
         </p>

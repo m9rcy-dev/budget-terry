@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 import type { DashboardSummary } from "@budget-terry/types";
 import { getDashboardSummary } from "@budget-terry/api-client";
+import { colors, spacing } from "@budget-terry/ui";
+import { EmptyState } from "../components/EmptyState";
+import { LoadingState } from "../components/LoadingState";
+import { Screen } from "../components/Screen";
+import { Section } from "../components/Section";
 import { apiClient } from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
 
@@ -11,7 +16,7 @@ function minorUnitsToDollars(value: number): string {
 }
 
 export default function HomeScreen() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
 
@@ -33,40 +38,14 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Budget Terry</Text>
+    <Screen title="Budget Terry">
       <Text style={styles.subtitle}>
         Logged in as {user.displayName} ({user.email})
       </Text>
 
-      <View style={styles.nav}>
-        <Link href="/transactions" style={styles.navLink}>
-          Transactions
-        </Link>
-        <Link href="/accounts" style={styles.navLink}>
-          Accounts
-        </Link>
-        <Link href="/categories" style={styles.navLink}>
-          Categories
-        </Link>
-        <Link href="/budgets" style={styles.navLink}>
-          Budgets
-        </Link>
-        <Link href="/bills" style={styles.navLink}>
-          Bills
-        </Link>
-        <Link href="/calendar" style={styles.navLink}>
-          Calendar
-        </Link>
-        <Link href="/goals" style={styles.navLink}>
-          Goals
-        </Link>
-        <Link href="/analytics" style={styles.navLink}>
-          Analytics
-        </Link>
-      </View>
-
-      {summary && (
+      {!summary ? (
+        <LoadingState message="Loading your dashboard…" />
+      ) : (
         <>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -87,78 +66,53 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <Text style={styles.sectionTitle}>Recent transactions</Text>
-          <FlatList
-            data={summary.recentTransactions}
-            keyExtractor={(item) => item.id}
-            style={styles.list}
-            ListEmptyComponent={<Text style={styles.empty}>No transactions yet.</Text>}
-            renderItem={({ item }) => (
-              <View style={styles.txnRow}>
-                <Text>{item.transactionDate.slice(0, 10)}</Text>
-                <Text
-                  style={item.type === "EXPENSE" ? styles.summaryExpense : styles.summaryIncome}
-                >
-                  {item.type === "EXPENSE" ? "-" : "+"}${minorUnitsToDollars(item.amountMinorUnits)}
-                </Text>
-              </View>
-            )}
-          />
+          <Section title="Recent transactions">
+            <FlatList
+              data={summary.recentTransactions}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              ListEmptyComponent={<EmptyState message="No transactions yet." />}
+              renderItem={({ item }) => (
+                <View style={styles.txnRow}>
+                  <Text style={styles.txnDate}>{item.transactionDate.slice(0, 10)}</Text>
+                  <Text
+                    style={item.type === "EXPENSE" ? styles.summaryExpense : styles.summaryIncome}
+                  >
+                    {item.type === "EXPENSE" ? "-" : "+"}$
+                    {minorUnitsToDollars(item.amountMinorUnits)}
+                  </Text>
+                </View>
+              )}
+            />
+          </Section>
         </>
       )}
-
-      <Pressable
-        style={styles.button}
-        onPress={async () => {
-          await logout();
-          router.replace("/login");
-        }}
-      >
-        <Text style={styles.buttonText}>Log out</Text>
-      </Pressable>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    gap: 12,
-    padding: 24,
-    paddingTop: 60,
+  subtitle: { fontSize: 14, color: colors.textSecondary },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "600",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#70746F",
-  },
-  nav: { flexDirection: "row", gap: 16 },
-  navLink: { textDecorationLine: "underline" },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   summaryItem: { alignItems: "center" },
-  summaryLabel: { fontSize: 12, color: "#70746F" },
-  summaryIncome: { fontSize: 16, fontWeight: "600", color: "#15803d" },
-  summaryExpense: { fontSize: 16, fontWeight: "600", color: "#b91c1c" },
-  summaryNet: { fontSize: 16, fontWeight: "600" },
-  sectionTitle: { fontSize: 13, fontWeight: "600", color: "#70746F", marginTop: 8 },
-  list: { marginTop: 4 },
+  summaryLabel: { fontSize: 12, color: colors.textSecondary },
+  summaryIncome: { fontSize: 16, fontWeight: "600", color: colors.financialPositive },
+  summaryExpense: { fontSize: 16, fontWeight: "600", color: colors.financialNegative },
+  summaryNet: { fontSize: 16, fontWeight: "600", color: colors.textPrimary },
   txnRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 8,
+    paddingVertical: spacing.xs + 4,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    borderBottomColor: colors.border,
   },
-  empty: { color: "#70746F", fontSize: 14 },
-  button: {
-    backgroundColor: "#111",
-    borderRadius: 8,
-    padding: 14,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: { color: "#fff", fontWeight: "600" },
+  txnDate: { color: colors.textPrimary },
 });

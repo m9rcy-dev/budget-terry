@@ -15,6 +15,7 @@
   "dependencies": {
     "@budget-terry/api-client": "workspace:*",
     "@budget-terry/types": "workspace:*",
+    "@budget-terry/ui": "workspace:*",
     "@budget-terry/validation": "workspace:*",
     "@hookform/resolvers": "^3.9.1",
     "expo": "^52.0.0",

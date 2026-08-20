@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import type { Category } from "@budget-terry/types";
 import {
   archiveCategory,
@@ -8,13 +8,21 @@ import {
   listCategories,
   restoreCategory,
 } from "@budget-terry/api-client";
+import { colors, spacing } from "@budget-terry/ui";
+import { Button } from "../components/Button";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { LoadingState } from "../components/LoadingState";
+import { Screen } from "../components/Screen";
+import { Section } from "../components/Section";
+import { TextField } from "../components/TextField";
 import { apiClient } from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
 
 export default function CategoriesScreen() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -63,61 +71,58 @@ export default function CategoriesScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Categories</Text>
-
-      <TextInput
-        placeholder="Category name"
-        value={name}
-        onChangeText={setName}
-        style={styles.input}
-      />
-      <Pressable style={styles.button} onPress={onCreate}>
-        <Text style={styles.buttonText}>Add category</Text>
-      </Pressable>
-      {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+    <Screen title="Categories">
+      <Section title="New category">
+        <TextField placeholder="Category name" value={name} onChangeText={setName} />
+        <Button onPress={onCreate}>Add category</Button>
+        {errorMessage && <ErrorState message={errorMessage} />}
+      </Section>
 
       <View style={styles.switchRow}>
-        <Switch value={showArchived} onValueChange={setShowArchived} />
-        <Text>Show archived</Text>
+        <Switch
+          value={showArchived}
+          onValueChange={setShowArchived}
+          trackColor={{ true: colors.accentPrimary }}
+        />
+        <Text style={styles.switchLabel}>Show archived</Text>
       </View>
 
-      <FlatList
-        data={categories}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={<Text style={styles.empty}>No categories yet.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <Text>
-              {item.name}
-              {item.isArchived ? " — Archived" : ""}
-            </Text>
-            <Pressable onPress={() => onArchiveToggle(item)}>
-              <Text style={styles.link}>{item.isArchived ? "Restore" : "Archive"}</Text>
-            </Pressable>
-          </View>
-        )}
-      />
-    </View>
+      {categories === null ? (
+        <LoadingState message="Loading categories…" />
+      ) : (
+        <FlatList
+          data={categories}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          ListEmptyComponent={<EmptyState message="No categories yet." />}
+          renderItem={({ item }) => (
+            <View style={styles.row}>
+              <Text style={styles.rowText}>
+                {item.name}
+                {item.isArchived ? " — Archived" : ""}
+              </Text>
+              <Pressable onPress={() => onArchiveToggle(item)}>
+                <Text style={styles.link}>{item.isArchived ? "Restore" : "Archive"}</Text>
+              </Pressable>
+            </View>
+          )}
+        />
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, gap: 12 },
-  title: { fontSize: 22, fontWeight: "600" },
-  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 12 },
-  button: { backgroundColor: "#111", borderRadius: 8, padding: 14, alignItems: "center" },
-  buttonText: { color: "#fff", fontWeight: "600" },
-  error: { color: "#b91c1c", fontSize: 13 },
-  switchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  switchRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs + 4 },
+  switchLabel: { color: colors.textSecondary },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: spacing.sm + 2,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    borderBottomColor: colors.border,
   },
-  link: { textDecorationLine: "underline" },
-  empty: { color: "#70746F", fontSize: 14 },
+  rowText: { color: colors.textPrimary },
+  link: { textDecorationLine: "underline", color: colors.accentPrimary },
 });

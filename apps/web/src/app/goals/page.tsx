@@ -12,6 +12,13 @@ import {
   listGoals,
   restoreGoal,
 } from "@budget-terry/api-client";
+import { AppShell } from "../../components/AppShell";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { Input, Select } from "../../components/Field";
+import { LoadingState } from "../../components/LoadingState";
+import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -26,7 +33,7 @@ function minorUnitsToDollars(value: number): string {
 export default function GoalsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [goals, setGoals] = useState<SavingsGoal[] | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -110,150 +117,160 @@ export default function GoalsPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-xl font-semibold">Savings Goals</h1>
+    <AppShell>
+      <h1 className="text-xl font-semibold text-text-primary">Savings Goals</h1>
 
-      <form onSubmit={onCreate} className="flex flex-col gap-2 rounded border p-4">
-        <p className="text-sm font-medium">New goal</p>
-        <input
-          placeholder="Name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          className="rounded border px-3 py-2"
-          required
-        />
-        <div className="flex gap-2">
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Target amount"
-            value={targetAmount}
-            onChange={(event) => setTargetAmount(event.target.value)}
-            className="rounded border px-3 py-2"
+      <Section title="New goal">
+        <form onSubmit={onCreate} className="flex flex-col gap-2">
+          <Input
+            aria-label="Name"
+            placeholder="Name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
             required
           />
-          <input
-            type="date"
-            value={targetDate}
-            onChange={(event) => setTargetDate(event.target.value)}
-            className="rounded border px-3 py-2"
-          />
-        </div>
-        <select
-          value={accountId}
-          onChange={(event) => setAccountId(event.target.value)}
-          className="rounded border px-3 py-2"
-        >
-          <option value="">No default account</option>
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </select>
-        <button type="submit" className="rounded bg-black px-3 py-2 text-white">
-          Add goal
-        </button>
-        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-      </form>
+          <div className="flex gap-2">
+            <Input
+              aria-label="Target amount"
+              type="number"
+              step="0.01"
+              placeholder="Target amount"
+              value={targetAmount}
+              onChange={(event) => setTargetAmount(event.target.value)}
+              required
+            />
+            <Input
+              aria-label="Target date"
+              type="date"
+              value={targetDate}
+              onChange={(event) => setTargetDate(event.target.value)}
+            />
+          </div>
+          <Select
+            aria-label="Default account"
+            value={accountId}
+            onChange={(event) => setAccountId(event.target.value)}
+          >
+            <option value="">No default account</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </Select>
+          <Button type="submit">Add goal</Button>
+          {errorMessage && <ErrorState message={errorMessage} />}
+        </form>
+      </Section>
 
-      <div className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2 text-sm text-text-secondary">
         <input
-          id="show-archived"
           type="checkbox"
           checked={showArchived}
           onChange={(event) => setShowArchived(event.target.checked)}
         />
-        <label htmlFor="show-archived">Show archived</label>
-      </div>
+        Show archived
+      </label>
 
-      <ul className="flex flex-col gap-4">
-        {goals.map((goal) => {
-          const percentage = Math.min(100, goal.percentageComplete);
-          return (
-            <li key={goal.id} className="rounded border p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <div>
-                  <p className="font-medium">
-                    {goal.name}
-                    {goal.status !== "ACTIVE" ? ` — ${goal.status}` : ""}
-                  </p>
-                  {goal.targetDate && (
-                    <p className="text-xs text-gray-500">
-                      Target date: {goal.targetDate.slice(0, 10)}
+      {goals === null ? (
+        <LoadingState message="Loading goals…" />
+      ) : (
+        <ul className="flex flex-col gap-4">
+          {goals.map((goal) => {
+            const percentage = Math.min(100, goal.percentageComplete);
+            return (
+              <li key={goal.id} className="rounded-lg border border-border bg-surface p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-text-primary">
+                      {goal.name}
+                      {goal.status !== "ACTIVE" ? ` — ${goal.status}` : ""}
                     </p>
-                  )}
-                </div>
-                <div className="flex gap-2 text-sm">
-                  {goal.status === "ACTIVE" && (
-                    <button type="button" onClick={() => onComplete(goal.id)} className="underline">
-                      Complete
+                    {goal.targetDate && (
+                      <p className="text-xs text-text-secondary">
+                        Target date: {goal.targetDate.slice(0, 10)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 text-sm">
+                    {goal.status === "ACTIVE" && (
+                      <button
+                        type="button"
+                        onClick={() => onComplete(goal.id)}
+                        className="text-accent-primary underline underline-offset-2"
+                      >
+                        Complete
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onArchiveToggle(goal)}
+                      className="text-text-secondary underline underline-offset-2"
+                    >
+                      {goal.status === "ARCHIVED" ? "Restore" : "Archive"}
                     </button>
-                  )}
-                  <button type="button" onClick={() => onArchiveToggle(goal)} className="underline">
-                    {goal.status === "ARCHIVED" ? "Restore" : "Archive"}
-                  </button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-xs">
-                  <span>
-                    ${minorUnitsToDollars(goal.savedMinorUnits)} of $
-                    {minorUnitsToDollars(goal.targetAmountMinorUnits)}
-                  </span>
-                  <span>{goal.percentageComplete}%</span>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between text-xs text-text-secondary">
+                    <span className="tabular-nums">
+                      ${minorUnitsToDollars(goal.savedMinorUnits)} of $
+                      {minorUnitsToDollars(goal.targetAmountMinorUnits)}
+                    </span>
+                    <span className="tabular-nums">{goal.percentageComplete}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-background">
+                    <div
+                      className="h-2 rounded-full bg-accent-primary"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                  <p className="tabular-nums text-xs text-text-secondary">
+                    ${minorUnitsToDollars(goal.remainingMinorUnits)} remaining
+                    {goal.suggestedMonthlyContributionMinorUnits !== null &&
+                      ` · suggested $${minorUnitsToDollars(goal.suggestedMonthlyContributionMinorUnits)}/month`}
+                  </p>
                 </div>
-                <div className="h-2 rounded bg-gray-100">
-                  <div className="h-2 rounded bg-black" style={{ width: `${percentage}%` }} />
-                </div>
-                <p className="text-xs text-gray-500">
-                  ${minorUnitsToDollars(goal.remainingMinorUnits)} remaining
-                  {goal.suggestedMonthlyContributionMinorUnits !== null &&
-                    ` · suggested $${minorUnitsToDollars(goal.suggestedMonthlyContributionMinorUnits)}/month`}
-                </p>
-              </div>
 
-              {goal.status === "ACTIVE" && (
-                <div className="mt-3 flex gap-2">
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Contribute"
-                    value={contributionAmounts[goal.id] ?? ""}
-                    onChange={(event) =>
-                      setContributionAmounts((current) => ({
-                        ...current,
-                        [goal.id]: event.target.value,
-                      }))
-                    }
-                    className="w-32 rounded border px-2 py-1 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onContribute(goal.id)}
-                    className="rounded border px-3 py-1 text-sm"
-                  >
-                    Add contribution
-                  </button>
-                </div>
-              )}
+                {goal.status === "ACTIVE" && (
+                  <div className="mt-3 flex gap-2">
+                    <Input
+                      aria-label={`Contribute to ${goal.name}`}
+                      type="number"
+                      step="0.01"
+                      placeholder="Contribute"
+                      value={contributionAmounts[goal.id] ?? ""}
+                      onChange={(event) =>
+                        setContributionAmounts((current) => ({
+                          ...current,
+                          [goal.id]: event.target.value,
+                        }))
+                      }
+                      className="w-32 text-sm"
+                    />
+                    <Button type="button" variant="secondary" onClick={() => onContribute(goal.id)}>
+                      Add contribution
+                    </Button>
+                  </div>
+                )}
 
-              {goal.contributions.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-1 text-xs text-gray-500">
-                  {goal.contributions.map((contribution) => (
-                    <li key={contribution.id}>
-                      {contribution.contributionDate.slice(0, 10)} — $
-                      {minorUnitsToDollars(contribution.amountMinorUnits)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-        {goals.length === 0 && <p className="text-sm text-gray-500">No goals yet.</p>}
-      </ul>
-    </main>
+                {goal.contributions.length > 0 && (
+                  <ul className="mt-3 flex flex-col gap-1 text-xs text-text-secondary">
+                    {goal.contributions.map((contribution) => (
+                      <li key={contribution.id} className="tabular-nums">
+                        {contribution.contributionDate.slice(0, 10)} — $
+                        {minorUnitsToDollars(contribution.amountMinorUnits)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+          {goals.length === 0 && <EmptyState message="No goals yet." />}
+        </ul>
+      )}
+    </AppShell>
   );
 }

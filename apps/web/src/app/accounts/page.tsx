@@ -9,6 +9,13 @@ import {
   listAccounts,
   restoreAccount,
 } from "@budget-terry/api-client";
+import { AppShell } from "../../components/AppShell";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { Input, Select } from "../../components/Field";
+import { LoadingState } from "../../components/LoadingState";
+import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -17,7 +24,7 @@ const ACCOUNT_TYPES = ["EVERYDAY", "SAVINGS", "CREDIT_CARD", "CASH", "OTHER"] as
 export default function AccountsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("EVERYDAY");
@@ -68,35 +75,35 @@ export default function AccountsPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col gap-6 p-8">
-      <h1 className="text-xl font-semibold">Accounts</h1>
+    <AppShell>
+      <h1 className="text-xl font-semibold text-text-primary">Accounts</h1>
 
-      <form onSubmit={onCreate} className="flex flex-col gap-2 rounded border p-4">
-        <input
-          placeholder="Account name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          className="rounded border px-3 py-2"
-          required
-        />
-        <select
-          value={type}
-          onChange={(event) => setType(event.target.value as (typeof ACCOUNT_TYPES)[number])}
-          className="rounded border px-3 py-2"
-        >
-          {ACCOUNT_TYPES.map((accountType) => (
-            <option key={accountType} value={accountType}>
-              {accountType}
-            </option>
-          ))}
-        </select>
-        <button type="submit" className="rounded bg-black px-3 py-2 text-white">
-          Add account
-        </button>
-        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-      </form>
+      <Section>
+        <form onSubmit={onCreate} className="flex flex-col gap-2">
+          <Input
+            aria-label="Account name"
+            placeholder="Account name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+          />
+          <Select
+            aria-label="Account type"
+            value={type}
+            onChange={(event) => setType(event.target.value as (typeof ACCOUNT_TYPES)[number])}
+          >
+            {ACCOUNT_TYPES.map((accountType) => (
+              <option key={accountType} value={accountType}>
+                {accountType}
+              </option>
+            ))}
+          </Select>
+          <Button type="submit">Add account</Button>
+          {errorMessage && <ErrorState message={errorMessage} />}
+        </form>
+      </Section>
 
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2 text-sm text-text-secondary">
         <input
           type="checkbox"
           checked={showArchived}
@@ -105,27 +112,33 @@ export default function AccountsPage() {
         Show archived
       </label>
 
-      <ul className="flex flex-col gap-2">
-        {accounts.map((account) => (
-          <li
-            key={account.id}
-            className="flex items-center justify-between rounded border px-3 py-2"
-          >
-            <span>
-              {account.name} <span className="text-sm text-gray-500">({account.type})</span>
-              {account.isArchived && <span className="ml-2 text-xs text-gray-400">Archived</span>}
-            </span>
-            <button
-              type="button"
-              onClick={() => onArchiveToggle(account)}
-              className="text-sm underline"
+      {accounts === null ? (
+        <LoadingState message="Loading accounts…" />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {accounts.map((account) => (
+            <li
+              key={account.id}
+              className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2"
             >
-              {account.isArchived ? "Restore" : "Archive"}
-            </button>
-          </li>
-        ))}
-        {accounts.length === 0 && <p className="text-sm text-gray-500">No accounts yet.</p>}
-      </ul>
-    </main>
+              <span className="text-text-primary">
+                {account.name} <span className="text-sm text-text-secondary">({account.type})</span>
+                {account.isArchived && (
+                  <span className="ml-2 text-xs text-text-secondary">Archived</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => onArchiveToggle(account)}
+                className="text-sm text-accent-primary underline underline-offset-2"
+              >
+                {account.isArchived ? "Restore" : "Archive"}
+              </button>
+            </li>
+          ))}
+          {accounts.length === 0 && <EmptyState message="No accounts yet." />}
+        </ul>
+      )}
+    </AppShell>
   );
 }

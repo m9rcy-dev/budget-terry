@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Account, Bill, Category } from "@budget-terry/types";
 import {
   archiveBill,
@@ -11,6 +11,15 @@ import {
   payBillOccurrence,
   skipBillOccurrence,
 } from "@budget-terry/api-client";
+import { colors, radius, spacing } from "@budget-terry/ui";
+import { Button } from "../components/Button";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { LoadingState } from "../components/LoadingState";
+import { Screen } from "../components/Screen";
+import { Section } from "../components/Section";
+import { StatusDot } from "../components/StatusDot";
+import { TextField } from "../components/TextField";
 import { apiClient } from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
 
@@ -25,12 +34,12 @@ function minorUnitsToDollars(value: number): string {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  UPCOMING: "#9ca3af",
-  DUE_SOON: "#d97706",
-  DUE_TODAY: "#ea580c",
-  OVERDUE: "#b91c1c",
-  PAID: "#16a34a",
-  SKIPPED: "#9ca3af",
+  UPCOMING: colors.billUpcoming,
+  DUE_SOON: colors.billDueSoon,
+  DUE_TODAY: colors.billDueToday,
+  OVERDUE: colors.billOverdue,
+  PAID: colors.billPaid,
+  SKIPPED: colors.billSkipped,
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -45,7 +54,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default function BillsScreen() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const [bills, setBills] = useState<Bill[]>([]);
+  const [bills, setBills] = useState<Bill[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -121,143 +130,138 @@ export default function BillsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Bills</Text>
+    <Screen title="Bills">
+      <Section title="New bill">
+        <TextField placeholder="Bill name" value={name} onChangeText={setName} />
+        <TextField
+          placeholder="Amount"
+          keyboardType="decimal-pad"
+          value={amount}
+          onChangeText={setAmount}
+        />
 
-      <TextInput placeholder="Bill name" value={name} onChangeText={setName} style={styles.input} />
-      <TextInput
-        placeholder="Amount"
-        keyboardType="decimal-pad"
-        value={amount}
-        onChangeText={setAmount}
-        style={styles.input}
-      />
+        <View style={styles.row}>
+          {RECURRENCES.map((r) => (
+            <Pressable
+              key={r}
+              onPress={() => setRecurrence(r)}
+              style={[styles.chip, recurrence === r && styles.chipSelected]}
+            >
+              <Text style={recurrence === r ? styles.chipTextSelected : styles.chipText}>{r}</Text>
+            </Pressable>
+          ))}
+        </View>
 
-      <View style={styles.row}>
-        {RECURRENCES.map((r) => (
-          <Pressable
-            key={r}
-            onPress={() => setRecurrence(r)}
-            style={[styles.chip, recurrence === r && styles.chipSelected]}
-          >
-            <Text style={recurrence === r ? styles.chipTextSelected : styles.chipText}>{r}</Text>
-          </Pressable>
-        ))}
-      </View>
+        <View style={styles.row}>
+          {categories.slice(0, 6).map((category) => (
+            <Pressable
+              key={category.id}
+              onPress={() => setCategoryId(category.id)}
+              style={[styles.chip, categoryId === category.id && styles.chipSelected]}
+            >
+              <Text style={categoryId === category.id ? styles.chipTextSelected : styles.chipText}>
+                {category.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
-      <View style={styles.row}>
-        {categories.slice(0, 6).map((category) => (
-          <Pressable
-            key={category.id}
-            onPress={() => setCategoryId(category.id)}
-            style={[styles.chip, categoryId === category.id && styles.chipSelected]}
-          >
-            <Text style={categoryId === category.id ? styles.chipTextSelected : styles.chipText}>
-              {category.name}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+        <View style={styles.row}>
+          {accounts.map((account) => (
+            <Pressable
+              key={account.id}
+              onPress={() => setAccountId(account.id)}
+              style={[styles.chip, accountId === account.id && styles.chipSelected]}
+            >
+              <Text style={accountId === account.id ? styles.chipTextSelected : styles.chipText}>
+                {account.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
-      <View style={styles.row}>
-        {accounts.map((account) => (
-          <Pressable
-            key={account.id}
-            onPress={() => setAccountId(account.id)}
-            style={[styles.chip, accountId === account.id && styles.chipSelected]}
-          >
-            <Text style={accountId === account.id ? styles.chipTextSelected : styles.chipText}>
-              {account.name}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+        <Button onPress={onCreate}>Add bill</Button>
+        {errorMessage && <ErrorState message={errorMessage} />}
+      </Section>
 
-      <Pressable style={styles.button} onPress={onCreate}>
-        <Text style={styles.buttonText}>Add bill</Text>
-      </Pressable>
-      {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
-
-      <FlatList
-        data={bills}
-        keyExtractor={(item) => item.id}
-        style={styles.list}
-        ListEmptyComponent={<Text style={styles.empty}>No bills yet.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.billCard}>
-            <View style={styles.billHeader}>
-              <Text style={styles.billName}>{item.name}</Text>
-              <Pressable onPress={() => onArchive(item.id)}>
-                <Text style={styles.link}>Archive</Text>
-              </Pressable>
-            </View>
-
-            {item.occurrences.map((occurrence) => (
-              <View key={occurrence.id} style={styles.occurrenceRow}>
-                <View style={styles.occurrenceInfo}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      { backgroundColor: STATUS_COLOR[occurrence.displayStatus] },
-                    ]}
-                  />
-                  <Text style={styles.occurrenceText}>
-                    {occurrence.dueDate.slice(0, 10)} · $
-                    {minorUnitsToDollars(occurrence.amountMinorUnits)} ·{" "}
-                    {STATUS_LABEL[occurrence.displayStatus] ?? occurrence.displayStatus}
-                  </Text>
-                </View>
-                {occurrence.paymentStatus === "PENDING" && (
-                  <View style={styles.occurrenceActions}>
-                    <Pressable onPress={() => onPay(item.id, occurrence.id)}>
-                      <Text style={styles.link}>Pay</Text>
-                    </Pressable>
-                    <Pressable onPress={() => onSkip(item.id, occurrence.id)}>
-                      <Text style={styles.link}>Skip</Text>
-                    </Pressable>
-                  </View>
-                )}
+      {bills === null ? (
+        <LoadingState message="Loading bills…" />
+      ) : (
+        <FlatList
+          data={bills}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          ListEmptyComponent={<EmptyState message="No bills yet." />}
+          renderItem={({ item }) => (
+            <View style={styles.billCard}>
+              <View style={styles.billHeader}>
+                <Text style={styles.billName}>{item.name}</Text>
+                <Pressable onPress={() => onArchive(item.id)}>
+                  <Text style={styles.link}>Archive</Text>
+                </Pressable>
               </View>
-            ))}
-          </View>
-        )}
-      />
-    </View>
+
+              {item.occurrences.map((occurrence) => (
+                <View key={occurrence.id} style={styles.occurrenceRow}>
+                  <View style={styles.occurrenceInfo}>
+                    <Text style={styles.occurrenceText}>
+                      {occurrence.dueDate.slice(0, 10)} · $
+                      {minorUnitsToDollars(occurrence.amountMinorUnits)}
+                    </Text>
+                    <StatusDot
+                      color={STATUS_COLOR[occurrence.displayStatus] ?? colors.textSecondary}
+                      label={STATUS_LABEL[occurrence.displayStatus] ?? occurrence.displayStatus}
+                    />
+                  </View>
+                  {occurrence.paymentStatus === "PENDING" && (
+                    <View style={styles.occurrenceActions}>
+                      <Pressable onPress={() => onPay(item.id, occurrence.id)}>
+                        <Text style={styles.link}>Pay</Text>
+                      </Pressable>
+                      <Pressable onPress={() => onSkip(item.id, occurrence.id)}>
+                        <Text style={styles.linkMuted}>Skip</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        />
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, gap: 8 },
-  title: { fontSize: 20, fontWeight: "600" },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs + 4 },
   chip: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: spacing.xs,
   },
-  chipSelected: { backgroundColor: "#111", borderColor: "#111" },
-  chipText: { fontSize: 12 },
-  chipTextSelected: { fontSize: 12, color: "#fff" },
-  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 12 },
-  button: { backgroundColor: "#111", borderRadius: 8, padding: 14, alignItems: "center" },
-  buttonText: { color: "#fff", fontWeight: "600" },
-  error: { color: "#b91c1c", fontSize: 13 },
-  list: { marginTop: 12 },
+  chipSelected: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+  chipText: { fontSize: 12, color: colors.textPrimary },
+  chipTextSelected: { fontSize: 12, color: "#FFFFFF" },
   billCard: {
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + 4,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    gap: 6,
+    borderBottomColor: colors.border,
+    gap: spacing.xs + 2,
   },
   billHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  billName: { fontSize: 15, fontWeight: "600" },
+  billName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
   occurrenceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  occurrenceInfo: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  occurrenceText: { fontSize: 12, color: "#374151", flexShrink: 1 },
-  occurrenceActions: { flexDirection: "row", gap: 12 },
-  link: { textDecorationLine: "underline" },
-  empty: { color: "#70746F", fontSize: 14 },
+  occurrenceInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs + 2,
+    flexShrink: 1,
+  },
+  occurrenceText: { fontSize: 12, color: colors.textPrimary, flexShrink: 1 },
+  occurrenceActions: { flexDirection: "row", gap: spacing.sm + 4 },
+  link: { textDecorationLine: "underline", color: colors.accentPrimary },
+  linkMuted: { textDecorationLine: "underline", color: colors.textSecondary },
 });

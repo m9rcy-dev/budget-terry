@@ -7,16 +7,22 @@ import {
   payBillOccurrence,
   skipBillOccurrence,
 } from "@budget-terry/api-client";
+import { colors, spacing } from "@budget-terry/ui";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
+import { LoadingState } from "../components/LoadingState";
+import { Screen } from "../components/Screen";
+import { StatusDot } from "../components/StatusDot";
 import { apiClient } from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
 
 const BILL_STATUS_COLOR: Record<string, string> = {
-  UPCOMING: "#9ca3af",
-  DUE_SOON: "#d97706",
-  DUE_TODAY: "#ea580c",
-  OVERDUE: "#b91c1c",
-  PAID: "#16a34a",
-  SKIPPED: "#9ca3af",
+  UPCOMING: colors.billUpcoming,
+  DUE_SOON: colors.billDueSoon,
+  DUE_TODAY: colors.billDueToday,
+  OVERDUE: colors.billOverdue,
+  PAID: colors.billPaid,
+  SKIPPED: colors.billSkipped,
 };
 
 const BILL_STATUS_LABEL: Record<string, string> = {
@@ -51,16 +57,16 @@ function entryKey(entry: CalendarEntry): string {
 }
 
 function entryDotColor(entry: CalendarEntry): string {
-  if (entry.type === "BILL") return BILL_STATUS_COLOR[entry.displayStatus] ?? "#9ca3af";
-  if (entry.type === "INCOME") return "#16a34a";
-  return "#4f46e5";
+  if (entry.type === "BILL") return BILL_STATUS_COLOR[entry.displayStatus] ?? colors.textSecondary;
+  if (entry.type === "INCOME") return colors.financialPositive;
+  return colors.accentSecondary;
 }
 
 export default function CalendarScreen() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [viewDate, setViewDate] = useState(() => new Date());
-  const [entries, setEntries] = useState<CalendarEntry[]>([]);
+  const [entries, setEntries] = useState<CalendarEntry[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,7 +92,7 @@ export default function CalendarScreen() {
 
   const entriesByDate = useMemo(() => {
     const map = new Map<string, CalendarEntry[]>();
-    for (const entry of entries) {
+    for (const entry of entries ?? []) {
       const bucket = map.get(entry.date) ?? [];
       bucket.push(entry);
       map.set(entry.date, bucket);
@@ -120,9 +126,9 @@ export default function CalendarScreen() {
   });
 
   return (
-    <View style={styles.container}>
+    <Screen title="Calendar">
       <View style={styles.header}>
-        <Text style={styles.title}>{monthLabel}</Text>
+        <Text style={styles.monthLabel}>{monthLabel}</Text>
         <View style={styles.navRow}>
           <Pressable
             onPress={() =>
@@ -146,93 +152,100 @@ export default function CalendarScreen() {
           </Pressable>
         </View>
       </View>
-      {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+      {errorMessage && <ErrorState message={errorMessage} />}
 
-      <ScrollView style={styles.list}>
-        {entriesByDate.length === 0 && (
-          <Text style={styles.empty}>Nothing on the calendar this month.</Text>
-        )}
-        {entriesByDate.map(([date, dayEntries]) => (
-          <View key={date} style={styles.daySection}>
-            <Text style={styles.dayHeading}>
-              {new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
-                weekday: "short",
-                day: "numeric",
-                month: "short",
-                timeZone: "UTC",
-              })}
-            </Text>
-            {dayEntries.map((entry) => (
-              <View key={entryKey(entry)} style={styles.entryRow}>
-                {entry.type === "BILL" && (
-                  <>
+      {entries === null ? (
+        <LoadingState message="Loading calendar…" />
+      ) : (
+        <ScrollView style={styles.list} scrollEnabled={false}>
+          {entriesByDate.length === 0 && (
+            <EmptyState message="Nothing on the calendar this month." />
+          )}
+          {entriesByDate.map(([date, dayEntries]) => (
+            <View key={date} style={styles.daySection}>
+              <Text style={styles.dayHeading}>
+                {new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  timeZone: "UTC",
+                })}
+              </Text>
+              {dayEntries.map((entry) => (
+                <View key={entryKey(entry)} style={styles.entryRow}>
+                  {entry.type === "BILL" && (
+                    <>
+                      <View style={styles.entryInfo}>
+                        <Text style={styles.entryText}>
+                          {entry.name} · ${minorUnitsToDollars(entry.amountMinorUnits)}
+                        </Text>
+                        <StatusDot
+                          color={entryDotColor(entry)}
+                          label={BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
+                        />
+                      </View>
+                      {entry.displayStatus !== "PAID" && entry.displayStatus !== "SKIPPED" && (
+                        <View style={styles.entryActions}>
+                          <Pressable onPress={() => onPay(entry.billId, entry.occurrenceId)}>
+                            <Text style={styles.link}>Pay</Text>
+                          </Pressable>
+                          <Pressable onPress={() => onSkip(entry.billId, entry.occurrenceId)}>
+                            <Text style={styles.linkMuted}>Skip</Text>
+                          </Pressable>
+                        </View>
+                      )}
+                    </>
+                  )}
+                  {entry.type === "INCOME" && (
                     <View style={styles.entryInfo}>
-                      <View style={[styles.statusDot, { backgroundColor: entryDotColor(entry) }]} />
+                      <StatusDot color={entryDotColor(entry)} label="Income" />
                       <Text style={styles.entryText}>
-                        {entry.name} · ${minorUnitsToDollars(entry.amountMinorUnits)} ·{" "}
-                        {BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
+                        {entry.merchant ?? entry.description ?? "Income"} · +$
+                        {minorUnitsToDollars(entry.amountMinorUnits)}
                       </Text>
                     </View>
-                    {entry.displayStatus !== "PAID" && entry.displayStatus !== "SKIPPED" && (
-                      <View style={styles.entryActions}>
-                        <Pressable onPress={() => onPay(entry.billId, entry.occurrenceId)}>
-                          <Text style={styles.link}>Pay</Text>
-                        </Pressable>
-                        <Pressable onPress={() => onSkip(entry.billId, entry.occurrenceId)}>
-                          <Text style={styles.link}>Skip</Text>
-                        </Pressable>
-                      </View>
-                    )}
-                  </>
-                )}
-                {entry.type === "INCOME" && (
-                  <View style={styles.entryInfo}>
-                    <View style={[styles.statusDot, { backgroundColor: entryDotColor(entry) }]} />
-                    <Text style={styles.entryText}>
-                      {entry.merchant ?? entry.description ?? "Income"} · +$
-                      {minorUnitsToDollars(entry.amountMinorUnits)}
-                    </Text>
-                  </View>
-                )}
-                {entry.type === "SAVINGS_CONTRIBUTION" && (
-                  <View style={styles.entryInfo}>
-                    <View style={[styles.statusDot, { backgroundColor: entryDotColor(entry) }]} />
-                    <Text style={styles.entryText}>
-                      {entry.goalName} · ${minorUnitsToDollars(entry.amountMinorUnits)} · Savings
-                      contribution
-                    </Text>
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        ))}
-      </ScrollView>
-    </View>
+                  )}
+                  {entry.type === "SAVINGS_CONTRIBUTION" && (
+                    <View style={styles.entryInfo}>
+                      <StatusDot color={entryDotColor(entry)} label="Savings contribution" />
+                      <Text style={styles.entryText}>
+                        {entry.goalName} · ${minorUnitsToDollars(entry.amountMinorUnits)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, gap: 8 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 20, fontWeight: "600" },
-  navRow: { flexDirection: "row", gap: 16 },
-  link: { textDecorationLine: "underline" },
-  error: { color: "#b91c1c", fontSize: 13 },
-  list: { marginTop: 8 },
-  daySection: { marginBottom: 16 },
-  dayHeading: { fontSize: 13, fontWeight: "600", color: "#70746F", marginBottom: 6 },
+  monthLabel: { fontSize: 16, fontWeight: "600", color: colors.textPrimary },
+  navRow: { flexDirection: "row", gap: spacing.md },
+  link: { textDecorationLine: "underline", color: colors.accentPrimary },
+  linkMuted: { textDecorationLine: "underline", color: colors.textSecondary },
+  list: { marginTop: spacing.xs },
+  daySection: { marginBottom: spacing.md },
+  dayHeading: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginBottom: spacing.xs + 2,
+  },
   entryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: spacing.xs + 4,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    borderBottomColor: colors.border,
   },
-  entryInfo: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  entryText: { fontSize: 12, color: "#374151", flexShrink: 1 },
-  entryActions: { flexDirection: "row", gap: 12 },
-  empty: { color: "#70746F", fontSize: 14 },
+  entryInfo: { flexDirection: "row", alignItems: "center", gap: spacing.xs + 2, flexShrink: 1 },
+  entryText: { fontSize: 12, color: colors.textPrimary, flexShrink: 1 },
+  entryActions: { flexDirection: "row", gap: spacing.sm + 4 },
 });

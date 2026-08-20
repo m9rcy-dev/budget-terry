@@ -3,7 +3,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { loginSchema, type LoginInput } from "@budget-terry/validation";
 import { Link, useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { colors, spacing } from "@budget-terry/ui";
+import { Button } from "../components/Button";
+import { ErrorState } from "../components/ErrorState";
+import { TextField } from "../components/TextField";
 import { useAuth } from "../lib/auth-context";
 
 export default function LoginScreen() {
@@ -34,38 +38,38 @@ export default function LoginScreen() {
         control={control}
         name="email"
         render={({ field }) => (
-          <TextInput
+          <TextField
+            label="Email"
             placeholder="Email"
             autoCapitalize="none"
             keyboardType="email-address"
-            style={styles.input}
             onChangeText={field.onChange}
             value={field.value}
           />
         )}
       />
-      {errors.email && <Text style={styles.error}>{errors.email.message}</Text>}
+      {errors.email && <ErrorState message={errors.email.message ?? "Invalid email."} />}
 
       <Controller
         control={control}
         name="password"
         render={({ field }) => (
-          <TextInput
+          <TextField
+            label="Password"
             placeholder="Password"
             secureTextEntry
-            style={styles.input}
             onChangeText={field.onChange}
             value={field.value}
           />
         )}
       />
-      {errors.password && <Text style={styles.error}>{errors.password.message}</Text>}
+      {errors.password && <ErrorState message={errors.password.message ?? "Invalid password."} />}
 
-      {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+      {errorMessage && <ErrorState message={errorMessage} />}
 
-      <Pressable style={styles.button} onPress={handleSubmit(onSubmit)} disabled={isSubmitting}>
-        <Text style={styles.buttonText}>{isSubmitting ? "Logging in..." : "Log in"}</Text>
-      </Pressable>
+      <Button onPress={handleSubmit(onSubmit)} disabled={isSubmitting}>
+        {isSubmitting ? "Logging in..." : "Log in"}
+      </Button>
 
       <Link href="/register" style={styles.link}>
         No account? Register
@@ -75,17 +79,18 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 24, gap: 12 },
-  title: { fontSize: 22, fontWeight: "600", marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 12 },
-  error: { color: "#b91c1c", fontSize: 13 },
-  button: {
-    backgroundColor: "#111",
-    borderRadius: 8,
-    padding: 14,
-    alignItems: "center",
-    marginTop: 8,
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg,
+    gap: spacing.sm,
+    backgroundColor: colors.background,
   },
-  buttonText: { color: "#fff", fontWeight: "600" },
-  link: { marginTop: 12, textAlign: "center", textDecorationLine: "underline" },
+  title: { fontSize: 22, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.xs },
+  link: {
+    marginTop: spacing.sm,
+    textAlign: "center",
+    textDecorationLine: "underline",
+    color: colors.accentPrimary,
+  },
 });

@@ -10,6 +10,13 @@ import {
   listCategories,
   updateBudget,
 } from "@budget-terry/api-client";
+import { AppShell } from "../../components/AppShell";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { Input, Select } from "../../components/Field";
+import { LoadingState } from "../../components/LoadingState";
+import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -24,9 +31,9 @@ function minorUnitsToDollars(value: number): string {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  HEALTHY: "bg-green-600",
-  APPROACHING: "bg-amber-500",
-  EXCEEDED: "bg-red-600",
+  HEALTHY: "bg-budget-healthy",
+  APPROACHING: "bg-budget-approaching",
+  EXCEEDED: "bg-budget-exceeded",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -38,13 +45,13 @@ const STATUS_LABEL: Record<string, string> = {
 function StatusBar({ status, percentageUsed }: { status: string; percentageUsed: number }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex justify-between text-xs">
+      <div className="flex justify-between text-xs text-text-secondary">
         <span>{STATUS_LABEL[status] ?? status}</span>
-        <span>{percentageUsed}%</span>
+        <span className="tabular-nums">{percentageUsed}%</span>
       </div>
-      <div className="h-2 rounded bg-gray-100">
+      <div className="h-2 rounded-full bg-background">
         <div
-          className={`h-2 rounded ${STATUS_COLOR[status] ?? "bg-gray-400"}`}
+          className={`h-2 rounded-full ${STATUS_COLOR[status] ?? "bg-text-secondary"}`}
           style={{ width: `${Math.min(100, percentageUsed)}%` }}
         />
       </div>
@@ -55,7 +62,7 @@ function StatusBar({ status, percentageUsed }: { status: string; percentageUsed:
 export default function BudgetsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgets, setBudgets] = useState<Budget[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -171,149 +178,163 @@ export default function BudgetsPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-xl font-semibold">Budgets</h1>
+    <AppShell>
+      <h1 className="text-xl font-semibold text-text-primary">Budgets</h1>
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-2 rounded border p-4">
-        <p className="text-sm font-medium">{editingId ? "Edit budget" : "New budget"}</p>
-        <input
-          placeholder="Name (optional)"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          className="rounded border px-3 py-2"
-        />
-        <div className="flex gap-2">
-          <select
-            value={period}
-            onChange={(event) => setPeriod(event.target.value as (typeof PERIODS)[number])}
-            className="rounded border px-3 py-2"
-          >
-            {PERIODS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={anchorDate}
-            onChange={(event) => setAnchorDate(event.target.value)}
-            className="rounded border px-3 py-2"
-            required
+      <Section title={editingId ? "Edit budget" : "New budget"}>
+        <form onSubmit={onSubmit} className="flex flex-col gap-2">
+          <Input
+            aria-label="Name (optional)"
+            placeholder="Name (optional)"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
           />
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setMode("overall")}
-            className={`rounded px-3 py-1 text-sm ${mode === "overall" ? "bg-black text-white" : "border"}`}
-          >
-            Overall
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("perCategory")}
-            className={`rounded px-3 py-1 text-sm ${mode === "perCategory" ? "bg-black text-white" : "border"}`}
-          >
-            Per category
-          </button>
-        </div>
-
-        {mode === "overall" ? (
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Total amount"
-            value={totalAmount}
-            onChange={(event) => setTotalAmount(event.target.value)}
-            className="rounded border px-3 py-2"
-            required
-          />
-        ) : (
-          <div className="flex flex-col gap-1">
-            {categories.map((category) => (
-              <div key={category.id} className="flex items-center gap-2">
-                <span className="w-32 text-sm">{category.name}</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={categoryAmounts[category.id] ?? ""}
-                  onChange={(event) =>
-                    setCategoryAmounts((current) => ({
-                      ...current,
-                      [category.id]: event.target.value,
-                    }))
-                  }
-                  className="w-28 rounded border px-2 py-1 text-sm"
-                />
-              </div>
-            ))}
+          <div className="flex gap-2">
+            <Select
+              aria-label="Period"
+              value={period}
+              onChange={(event) => setPeriod(event.target.value as (typeof PERIODS)[number])}
+            >
+              {PERIODS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
+            <Input
+              aria-label="Anchor date"
+              type="date"
+              value={anchorDate}
+              onChange={(event) => setAnchorDate(event.target.value)}
+              required
+            />
           </div>
-        )}
 
-        <div className="flex gap-2">
-          <button type="submit" className="rounded bg-black px-3 py-2 text-white">
-            {editingId ? "Save changes" : "Create budget"}
-          </button>
-          {editingId && (
-            <button type="button" onClick={resetForm} className="rounded border px-3 py-2 text-sm">
-              Cancel
-            </button>
-          )}
-        </div>
-        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-      </form>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={mode === "overall" ? "primary" : "secondary"}
+              onClick={() => setMode("overall")}
+            >
+              Overall
+            </Button>
+            <Button
+              type="button"
+              variant={mode === "perCategory" ? "primary" : "secondary"}
+              onClick={() => setMode("perCategory")}
+            >
+              Per category
+            </Button>
+          </div>
 
-      <ul className="flex flex-col gap-4">
-        {budgets.map((budget) => (
-          <li key={budget.id} className="rounded border p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <div>
-                <p className="font-medium">{budget.name ?? `${budget.period} budget`}</p>
-                <p className="text-xs text-gray-500">
-                  {budget.currentPeriod.start} – {budget.currentPeriod.end}
-                </p>
-              </div>
-              <div className="flex gap-2 text-sm">
-                <button type="button" onClick={() => onEdit(budget)} className="underline">
-                  Edit
-                </button>
-                <button type="button" onClick={() => onDelete(budget.id)} className="underline">
-                  Delete
-                </button>
-              </div>
+          {mode === "overall" ? (
+            <Input
+              aria-label="Total amount"
+              type="number"
+              step="0.01"
+              placeholder="Total amount"
+              value={totalAmount}
+              onChange={(event) => setTotalAmount(event.target.value)}
+              required
+            />
+          ) : (
+            <div className="flex flex-col gap-1">
+              {categories.map((category) => (
+                <div key={category.id} className="flex items-center gap-2">
+                  <span className="w-32 text-sm text-text-primary">{category.name}</span>
+                  <Input
+                    aria-label={`${category.name} amount`}
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={categoryAmounts[category.id] ?? ""}
+                    onChange={(event) =>
+                      setCategoryAmounts((current) => ({
+                        ...current,
+                        [category.id]: event.target.value,
+                      }))
+                    }
+                    className="w-28 text-sm"
+                  />
+                </div>
+              ))}
             </div>
+          )}
 
-            {budget.status !== null && (
-              <StatusBar status={budget.status} percentageUsed={budget.percentageUsed ?? 0} />
+          <div className="flex gap-2">
+            <Button type="submit">{editingId ? "Save changes" : "Create budget"}</Button>
+            {editingId && (
+              <Button type="button" variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
             )}
-            {budget.status !== null && (
-              <p className="mt-1 text-xs text-gray-500">
-                ${minorUnitsToDollars(budget.spentMinorUnits ?? 0)} of $
-                {minorUnitsToDollars(budget.totalAmountMinorUnits ?? 0)}
-              </p>
-            )}
+          </div>
+          {errorMessage && <ErrorState message={errorMessage} />}
+        </form>
+      </Section>
 
-            {budget.categories.length > 0 && (
-              <div className="mt-2 flex flex-col gap-3">
-                {budget.categories.map((entry) => (
-                  <div key={entry.categoryId}>
-                    <p className="text-sm">{entry.categoryName}</p>
-                    <StatusBar status={entry.status} percentageUsed={entry.percentageUsed} />
-                    <p className="mt-1 text-xs text-gray-500">
-                      ${minorUnitsToDollars(entry.spentMinorUnits)} of $
-                      {minorUnitsToDollars(entry.amountMinorUnits)}
-                    </p>
-                  </div>
-                ))}
+      {budgets === null ? (
+        <LoadingState message="Loading budgets…" />
+      ) : (
+        <ul className="flex flex-col gap-4">
+          {budgets.map((budget) => (
+            <li key={budget.id} className="rounded-lg border border-border bg-surface p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-text-primary">
+                    {budget.name ?? `${budget.period} budget`}
+                  </p>
+                  <p className="text-xs text-text-secondary">
+                    {budget.currentPeriod.start} – {budget.currentPeriod.end}
+                  </p>
+                </div>
+                <div className="flex gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(budget)}
+                    className="text-accent-primary underline underline-offset-2"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(budget.id)}
+                    className="text-financial-negative underline underline-offset-2"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-            )}
-          </li>
-        ))}
-        {budgets.length === 0 && <p className="text-sm text-gray-500">No budgets yet.</p>}
-      </ul>
-    </main>
+
+              {budget.status !== null && (
+                <StatusBar status={budget.status} percentageUsed={budget.percentageUsed ?? 0} />
+              )}
+              {budget.status !== null && (
+                <p className="mt-1 tabular-nums text-xs text-text-secondary">
+                  ${minorUnitsToDollars(budget.spentMinorUnits ?? 0)} of $
+                  {minorUnitsToDollars(budget.totalAmountMinorUnits ?? 0)}
+                </p>
+              )}
+
+              {budget.categories.length > 0 && (
+                <div className="mt-2 flex flex-col gap-3">
+                  {budget.categories.map((entry) => (
+                    <div key={entry.categoryId}>
+                      <p className="text-sm text-text-primary">{entry.categoryName}</p>
+                      <StatusBar status={entry.status} percentageUsed={entry.percentageUsed} />
+                      <p className="mt-1 tabular-nums text-xs text-text-secondary">
+                        ${minorUnitsToDollars(entry.spentMinorUnits)} of $
+                        {minorUnitsToDollars(entry.amountMinorUnits)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </li>
+          ))}
+          {budgets.length === 0 && <EmptyState message="No budgets yet." />}
+        </ul>
+      )}
+    </AppShell>
   );
 }
