@@ -37,6 +37,18 @@ function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function entryKey(entry: CalendarEntry): string {
+  if (entry.type === "BILL") return entry.occurrenceId;
+  if (entry.type === "INCOME") return entry.transactionId;
+  return entry.contributionId;
+}
+
+function entryDotColor(entry: CalendarEntry): string {
+  if (entry.type === "BILL") return BILL_STATUS_COLOR[entry.displayStatus] ?? "bg-gray-400";
+  if (entry.type === "INCOME") return "bg-green-600";
+  return "bg-indigo-600";
+}
+
 /** Monday-first 6-week grid so every month fits without a variable row count. */
 function buildMonthGrid(year: number, month: number): Date[] {
   const firstOfMonth = new Date(Date.UTC(year, month, 1));
@@ -177,12 +189,8 @@ export default function CalendarPage() {
               <div className="flex flex-wrap justify-center gap-1">
                 {dayEntries.slice(0, 4).map((entry) => (
                   <span
-                    key={entry.type === "BILL" ? entry.occurrenceId : entry.transactionId}
-                    className={`h-2 w-2 rounded-full ${
-                      entry.type === "INCOME"
-                        ? "bg-green-600"
-                        : (BILL_STATUS_COLOR[entry.displayStatus] ?? "bg-gray-400")
-                    }`}
+                    key={entryKey(entry)}
+                    className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`}
                   />
                 ))}
               </div>
@@ -208,15 +216,13 @@ export default function CalendarPage() {
             <ul className="flex flex-col gap-1">
               {entriesByDate.get(date)!.map((entry) => (
                 <li
-                  key={entry.type === "BILL" ? entry.occurrenceId : entry.transactionId}
+                  key={entryKey(entry)}
                   className="flex items-center justify-between rounded border px-3 py-2 text-sm"
                 >
-                  {entry.type === "BILL" ? (
+                  {entry.type === "BILL" && (
                     <>
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 rounded-full ${BILL_STATUS_COLOR[entry.displayStatus]}`}
-                        />
+                        <span className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`} />
                         <span>{entry.name}</span>
                         <span className="text-xs text-gray-500">
                           {BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
@@ -244,15 +250,26 @@ export default function CalendarPage() {
                         )}
                       </div>
                     </>
-                  ) : (
+                  )}
+                  {entry.type === "INCOME" && (
                     <>
                       <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-green-600" />
+                        <span className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`} />
                         <span>{entry.merchant ?? entry.description ?? "Income"}</span>
                       </div>
                       <span className="text-green-700">
                         +${minorUnitsToDollars(entry.amountMinorUnits)}
                       </span>
+                    </>
+                  )}
+                  {entry.type === "SAVINGS_CONTRIBUTION" && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-2 rounded-full ${entryDotColor(entry)}`} />
+                        <span>{entry.goalName}</span>
+                        <span className="text-xs text-gray-500">Savings contribution</span>
+                      </div>
+                      <span>${minorUnitsToDollars(entry.amountMinorUnits)}</span>
                     </>
                   )}
                 </li>

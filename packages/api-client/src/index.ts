@@ -6,3 +6,4 @@ export * from "./resources/dashboard";
 export * from "./resources/budgets";
 export * from "./resources/bills";
 export * from "./resources/calendar";
+export * from "./resources/goals";

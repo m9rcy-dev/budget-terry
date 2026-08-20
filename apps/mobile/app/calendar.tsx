@@ -45,7 +45,15 @@ function endOfMonth(date: Date): Date {
 }
 
 function entryKey(entry: CalendarEntry): string {
-  return entry.type === "BILL" ? entry.occurrenceId : entry.transactionId;
+  if (entry.type === "BILL") return entry.occurrenceId;
+  if (entry.type === "INCOME") return entry.transactionId;
+  return entry.contributionId;
+}
+
+function entryDotColor(entry: CalendarEntry): string {
+  if (entry.type === "BILL") return BILL_STATUS_COLOR[entry.displayStatus] ?? "#9ca3af";
+  if (entry.type === "INCOME") return "#16a34a";
+  return "#4f46e5";
 }
 
 export default function CalendarScreen() {
@@ -156,15 +164,10 @@ export default function CalendarScreen() {
             </Text>
             {dayEntries.map((entry) => (
               <View key={entryKey(entry)} style={styles.entryRow}>
-                {entry.type === "BILL" ? (
+                {entry.type === "BILL" && (
                   <>
                     <View style={styles.entryInfo}>
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: BILL_STATUS_COLOR[entry.displayStatus] },
-                        ]}
-                      />
+                      <View style={[styles.statusDot, { backgroundColor: entryDotColor(entry) }]} />
                       <Text style={styles.entryText}>
                         {entry.name} · ${minorUnitsToDollars(entry.amountMinorUnits)} ·{" "}
                         {BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
@@ -181,12 +184,22 @@ export default function CalendarScreen() {
                       </View>
                     )}
                   </>
-                ) : (
+                )}
+                {entry.type === "INCOME" && (
                   <View style={styles.entryInfo}>
-                    <View style={[styles.statusDot, { backgroundColor: "#16a34a" }]} />
+                    <View style={[styles.statusDot, { backgroundColor: entryDotColor(entry) }]} />
                     <Text style={styles.entryText}>
                       {entry.merchant ?? entry.description ?? "Income"} · +$
                       {minorUnitsToDollars(entry.amountMinorUnits)}
+                    </Text>
+                  </View>
+                )}
+                {entry.type === "SAVINGS_CONTRIBUTION" && (
+                  <View style={styles.entryInfo}>
+                    <View style={[styles.statusDot, { backgroundColor: entryDotColor(entry) }]} />
+                    <Text style={styles.entryText}>
+                      {entry.goalName} · ${minorUnitsToDollars(entry.amountMinorUnits)} · Savings
+                      contribution
                     </Text>
                   </View>
                 )}

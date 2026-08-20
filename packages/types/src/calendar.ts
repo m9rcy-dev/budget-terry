@@ -22,9 +22,15 @@ export interface CalendarIncomeEntry {
   description: string | null;
 }
 
-/**
- * Savings contributions (plan Section 6's "Optional savings
- * contributions") aren't included yet — GoalContribution doesn't exist
- * until Phase 10. Revisit once it does.
- */
-export type CalendarEntry = CalendarBillEntry | CalendarIncomeEntry;
+export interface CalendarSavingsContributionEntry {
+  type: "SAVINGS_CONTRIBUTION";
+  date: string;
+  goalId: string;
+  contributionId: string;
+  goalName: string;
+  amountMinorUnits: number;
+  currency: CurrencyCode;
+}
+
+export type CalendarEntry =
+  CalendarBillEntry | CalendarIncomeEntry | CalendarSavingsContributionEntry;

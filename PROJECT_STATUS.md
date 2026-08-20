@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-20
-Current Phase: Phase 9 — Calendar (complete)
+Current Phase: Phase 10 — Savings Goals (complete)
 Current Task: See Next Task below
 
 ## Completed
@@ -139,10 +139,26 @@ The plan's Section 6 feature: month/week/agenda views surfacing bills and expect
 - Calendar entries include occurrences from **archived** bills (a deliberate exception to the default-hide-archived convention used by Bill/Account/Category list endpoints) — the calendar is a factual record of what's due/was due on a date, not an ongoing management list.
 - Known, documented limitation: `findOccurrencesDueInRange` doesn't top up occurrence generation the way `BillsService.findOneForUser`/`findAllForUser` do — a bill whose occurrences haven't been generated that far ahead (beyond the 90-day horizon from Phase 8) simply won't appear on the calendar until a later bill list/get call tops it up. Acceptable given calendar browsing realistically stays within that horizon; noted as a Known Issue below.
 - Shared `packages/types` (`CalendarEntry`, `CalendarBillEntry`, `CalendarIncomeEntry`) and `packages/validation` (`calendarQuerySchema`). `packages/api-client` gained `getCalendarEntries`.
-- Web `/calendar`: a Monday-first month grid (status-colored dots per day, clicking a day jumps to its agenda section) plus a full agenda list below matching the plan's Section 6 example format exactly (grouped by date, bill/income lines with amounts) — every status shown as a dot *and* text label, never color alone (plan Section 54). Pay/Skip act inline on bill entries, reusing Phase 8's bill actions directly rather than a separate detail modal.
+- Web `/calendar`: a Monday-first month grid (status-colored dots per day, clicking a day jumps to its agenda section) plus a full agenda list below matching the plan's Section 6 example format exactly (grouped by date, bill/income lines with amounts) — every status shown as a dot _and_ text label, never color alone (plan Section 54). Pay/Skip act inline on bill entries, reusing Phase 8's bill actions directly rather than a separate detail modal.
 - Mobile `/calendar`: agenda-only (no month grid — impractical on a small screen without a calendar-grid dependency this project doesn't have), same status indicators, Pay/Skip inline, month Previous/Next navigation.
 - Tests: 5 new backend unit tests for `CalendarService` (129 total, mocked `BillsService`/`TransactionsService` composition), 5 new integration tests (56 total) covering the bills+income merge/sort, range exclusion, archived-bill inclusion, the required-params 400, and a critical isolation test.
 - Verified `pnpm quality` passes end to end — exit code 0, 245 tests total (189 unit + 56 integration). Booted `apps/api` against the real local database mid-phase (before the integration tests were even written) and smoke-tested `/calendar/entries` with `curl` — confirmed bill occurrence + income entries both appear, correctly sorted, with out-of-range entries excluded — before formalizing the behavior into tests. Also booted `apps/web` and confirmed `/calendar` serves 200 with live data. Committed locally: "Add Phase 9 calendar".
+
+### Phase 10 — Savings Goals
+
+The plan's Section 7 feature: `SavingsGoal`/`GoalContribution` (both already scaffolded in the Phase 2 schema), progress computed live from contributions, a contribution atomically creating a linked `Transaction` (ADR-005 — the same pattern Phase 8 proved out for bill payments). Also resolves the Phase 9 calendar's documented "savings contributions not included yet" gap in the same phase, now that `GoalContribution` exists.
+
+- `goal-progress.ts` — the tricky date math isolated and unit-tested on its own, same precedent as `budget-period.ts`/`bill-recurrence.ts`: `computeMonthsRemaining(today, targetDate)` counts whole months, clamped to a minimum of 1 so a target date this month (or already passed) still yields a concrete "put this in now" figure instead of null/Infinity; `computeSuggestedMonthlyContribution` rounds up so the suggestion never under-shoots. 12 unit tests, including a leap-day target date and the partial-final-month edge case.
+- `GoalsService.attachProgress` computes `savedMinorUnits` (summed live from `GoalContribution` rows — `SavingsGoal.currentAmountMinorUnits` is deliberately absent from the schema, same "computed, not cached" principle as Budget/Bill), `remainingMinorUnits` (clamped at zero on overshoot), `percentageComplete`, and `suggestedMonthlyContributionMinorUnits` (null when there's no `targetDate` to compute against). Verified against the plan's own worked example end to end (`$3,250` saved of `$8,000` target → **40.6%**, matching plan Section 7's example exactly) — both in a real `curl` smoke test and as an integration test assertion.
+- `addContribution` atomically creates the `GoalContribution` row *and* its linked `Transaction` (ADR-005) in a single `$transaction` — the reverse creation order from bill payments, since the contribution doesn't pre-exist the way a `BillOccurrence` does: the contribution row is created first so the `Transaction` can reference its id. Resolves `accountId` from the goal's default or an explicit per-contribution override, 400s if neither is available — identical shape to Phase 8's `markOccurrencePaid`.
+- Of plan Section 8's three "Payday Contributions" capabilities (manual contribution, suggested contribution, recurring contribution rule), the first two are built this phase; **recurring/automated contribution rules are deliberately out of scope** — the plan itself says "Automated bank transfers are outside the initial scope" and frames salary auto-splitting as a *future* capability, and no payday/recurring-income entity exists to hang a rule off (same open Section 69 review question already noted for the Phase 9 calendar's income entries). Documented on `SavingsGoal.suggestedMonthlyContributionMinorUnits` in `packages/types`, not silently dropped.
+- Status lifecycle (`ACTIVE`/`COMPLETED`/`ARCHIVED`) is entirely user-driven via explicit `complete`/`archive`/`restore` actions — a goal reaching its target does **not** auto-transition to `COMPLETED`, avoiding a surprising side effect for a user who wants to keep contributing past the target. Default list hides `ARCHIVED` (same convention as Accounts/Categories/Bills); `COMPLETED` goals stay visible.
+- **Wired savings contributions into the Phase 9 calendar in the same phase**, resolving that phase's documented Known Issue: `GoalsService.findContributionsInRange` (same shape as `BillsService.findOccurrencesDueInRange`) feeds a new `CalendarSavingsContributionEntry` type into `CalendarService.getEntries`'s merge/sort, completing plan Section 6's three calendar entry types (bills, income, savings contributions). Web/mobile calendar UI updated with a distinct indigo indicator and "Savings contribution" label.
+- Shared `packages/types` (`SavingsGoal`, `GoalContribution`, `GoalStatusType`, `CalendarSavingsContributionEntry`) and `packages/validation` (`createGoalSchema`, `updateGoalSchema`, `createGoalContributionSchema`). `packages/api-client` gained typed resource helpers.
+- Web `/goals`: create form, progress bar with text percentage alongside it (plan Section 54 — never color/bar alone), remaining amount and suggested-monthly-contribution figures, inline contribute/complete/archive/restore, contribution history list.
+- Mobile `/goals`: same chip-based account picker and quick-entry pattern established in Phases 5/7/8, progress bar, inline contribute/complete/archive.
+- Tests: 15 new backend unit tests for `GoalsService` (157 total) plus 12 for `goal-progress` (counted above), 6 new integration tests (62 total) covering the plan's own 40.6% worked example, contribution-creates-real-linked-transaction (verified by re-fetching the transaction), the no-default-account 400, the complete/archive/restore lifecycle with default-hides-archived, and a critical isolation test covering read/edit/contribute/archive. `CalendarService`'s unit and integration tests were extended (not just left alone) to cover the three-way bill/income/contribution merge.
+- Verified `pnpm quality` passes end to end — exit code 0, 288 tests total (226 unit + 62 integration). Booted `apps/api` against the real local database mid-phase (before integration tests existed) and smoke-tested the full goal lifecycle with `curl` — create, contribute, confirm linked transaction, complete, archive, default-list exclusion, no-account rejection — then a second combined smoke test proving a bill occurrence, an income transaction, and a savings contribution all appear together on one `/calendar/entries` call. Also booted `apps/web` and confirmed `/goals` and `/calendar` both serve 200 with live data. Committed locally: "Add Phase 10 savings goals".
 
 ## In Progress
 
@@ -150,7 +166,7 @@ The plan's Section 6 feature: month/week/agenda views surfacing bills and expect
 
 ## Next Task
 
-Phase 9 is complete. Re-read plan Section 60 for Phase 10 — Savings Goals: `SavingsGoal`/`GoalContribution` CRUD (both already scaffolded in the Phase 2 schema — `currentAmountMinorUnits` deliberately NOT stored, summed from contributions live, same principle as every other computed-not-cached figure in this codebase), progress/remaining/percentage computed on read, a contribution atomically creating a linked `Transaction` (ADR-005 — same pattern Phase 8 already proved out for bill payments), and plan Section 8's "Payday Contributions" concept (suggested/manual contribution allocation across goals). Web + mobile UI, tests.
+Phase 10 is complete. Re-read plan Section 60 for Phase 11 — Analytics: spending-by-category report, spending trend, budget vs. actual, income vs. expenses, recurring expense report, goal contribution report, date/account/category filters, charts, reporting performance tests. This is the first phase primarily about *reporting over* the data Phases 4–10 already produce (transactions, budgets, bills, goal contributions) rather than new write paths — expect it to compose existing services the way Phase 6's dashboard and Phase 9's calendar did, plus real chart rendering on web/mobile (no charting library chosen yet — evaluate options as part of this phase).
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
@@ -164,9 +180,10 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - Web/mobile Transactions UI doesn't expose changing which account/category a transaction belongs to during edit (only amount/merchant on web; mobile has no edit UI at all, by design — see Phase 5 above). The API supports full edits.
 - Dashboard's "current period" is still a calendar-month placeholder (Phase 6), not aligned to a user's real budget period now that Phase 7 has one — small follow-up to make the dashboard period-aware, not a blocker.
 - Bills UI (web + mobile) doesn't expose editing an existing bill's fields (name/amount/category/account/notes) — the API supports it (`PATCH /bills/:id`), the UI only offers create/pay/skip/archive. Same category of gap as Accounts/Categories above, not a blocker.
-- Mobile bill creation always uses today's date as `firstDueDate` (no date picker component yet) — same simplification already accepted for mobile budget creation's `anchorDate` in Phase 7. Web's bill form does expose a real date picker.
-- Calendar entries for a recurring bill can go missing beyond the 90-day occurrence-generation horizon until a bill list/get call tops it up (see Phase 9 above) — not a bug, a documented consequence of no batch job existing. Low practical impact since a calendar view realistically stays within a few months.
-- Calendar doesn't show savings contributions yet (plan Section 6's "Optional savings contributions") — `GoalContribution` doesn't exist until Phase 10; revisit `CalendarService`/`CalendarEntry` once it does.
+- Mobile bill creation always uses today's date as `firstDueDate` (no date picker component yet) — same simplification already accepted for mobile budget creation's `anchorDate` in Phase 7. Web's bill form does expose a real date picker. Same limitation applies to mobile goal creation's implicit `targetDate` (mobile goals have no target date field at all yet — web does).
+- Calendar entries for a recurring bill can go missing beyond the 90-day occurrence-generation horizon until a bill list/get call tops it up (see Phase 9) — not a bug, a documented consequence of no batch job existing. Low practical impact since a calendar view realistically stays within a few months.
+- Goals UI (web + mobile) doesn't expose editing an existing goal's fields (name/target amount/target date/account/notes) — the API supports it (`PATCH /goals/:id`), the UI only offers create/contribute/complete/archive/restore. Same category of gap as Accounts/Categories/Bills above, not a blocker.
+- Recurring/automated payday contribution rules (plan Section 8) are deliberately out of scope — see Phase 10 above for why (no payday/recurring-income entity exists, and the plan itself frames automated splitting as a future capability).
 
 ## Decisions Made
 
@@ -194,9 +211,16 @@ curl -X POST .../occurrences/:occId/skip (already PAID)               # 409
 curl -X POST http://localhost:3001/bills/:id/archive                  # isArchived: true
 curl http://localhost:3001/calendar/entries?from=&to=                 # bill + income entries merged, sorted by date
 curl http://localhost:3001/calendar/entries (no from/to)              # 400, rejected by Zod
-pnpm --filter @budget-terry/api run start:dev                     # /budgets, /bills, /calendar routes mapped, boots cleanly
-pnpm --filter @budget-terry/web run dev                           # /budgets, /bills, /calendar compile, GET returns 200
-pnpm --filter @budget-terry/api run test:integration               # 56/56 pass, real Testcontainers Postgres
+curl -X POST http://localhost:3001/goals ... targetDate               # goal created, suggestedMonthlyContributionMinorUnits computed
+curl -X POST http://localhost:3001/goals/:id/contributions            # 40.6% progress, matching the plan's own worked example exactly
+curl http://localhost:3001/transactions                               # confirms the contribution's linked transaction is in the ledger
+curl -X POST http://localhost:3001/goals/:id/complete                 # status -> COMPLETED
+curl -X POST http://localhost:3001/goals/:id/archive                  # status -> ARCHIVED, excluded from default GET /goals
+curl -X POST .../contributions (no default account, none provided)    # 400
+curl http://localhost:3001/calendar/entries?from=&to=                 # bill + income + savings-contribution entries merged, sorted by date
+pnpm --filter @budget-terry/api run start:dev                     # /budgets, /bills, /calendar, /goals routes mapped, boots cleanly
+pnpm --filter @budget-terry/web run dev                           # /budgets, /bills, /calendar, /goals compile, GET returns 200
+pnpm --filter @budget-terry/api run test:integration               # 62/62 pass, real Testcontainers Postgres
 pnpm format / pnpm format:check
 pnpm lint
 pnpm typecheck
@@ -208,7 +232,7 @@ pnpm quality        # PASS, exit code 0
 
 ## Last Quality Gate
 
-PASS (2026-08-20) — `pnpm quality` exit code 0, 245 tests across the workspace (189 unit + 56 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing `/calendar/entries` with `curl` (bill + income entries merged and sorted correctly), and by booting `apps/web` and confirming `/calendar` serves 200 with live data — not just tests/build passing.
+PASS (2026-08-20) — `pnpm quality` exit code 0, 288 tests across the workspace (226 unit + 62 integration). Also verified by actually running `apps/api` against the real local database mid-phase and smoke-testing the full goal lifecycle plus a combined bill+income+contribution `/calendar/entries` call with `curl`, and by booting `apps/web` and confirming `/goals` and `/calendar` both serve 200 with live data — not just tests/build passing.
 
 ## Resume Instructions
 

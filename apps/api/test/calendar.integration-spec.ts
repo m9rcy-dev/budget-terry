@@ -138,13 +138,42 @@ describe("calendar", () => {
     expect(entries.body[0]).toMatchObject({ type: "BILL", name: "Netflix" });
   });
 
+  it("includes savings contributions alongside bills and income", async () => {
+    const { accessToken, accountId } = await registerUserWithAccount("holly-calendar@example.com");
+    const today = isoDate(0);
+
+    const goal = await http()
+      .post("/goals")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ name: "Japan Holiday", targetAmountMinorUnits: 800000, accountId })
+      .expect(201);
+    await http()
+      .post(`/goals/${goal.body.id}/contributions`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ amountMinorUnits: 25000, contributionDate: isoDate(2) })
+      .expect(201);
+
+    const entries = await http()
+      .get(`/calendar/entries?from=${today}&to=${isoDate(10)}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(entries.body).toHaveLength(1);
+    expect(entries.body[0]).toMatchObject({
+      type: "SAVINGS_CONTRIBUTION",
+      date: isoDate(2),
+      goalName: "Japan Holiday",
+      amountMinorUnits: 25000,
+    });
+  });
+
   it("rejects a request missing the required from/to query parameters", async () => {
     const { accessToken } = await registerUserWithAccount("dave-calendar@example.com");
 
     await http().get("/calendar/entries").set("Authorization", `Bearer ${accessToken}`).expect(400);
   });
 
-  it("CRITICAL: a user's calendar never includes another user's bills or income", async () => {
+  it("CRITICAL: a user's calendar never includes another user's bills, income, or contributions", async () => {
     const userA = await registerUserWithAccount("erin-calendar@example.com");
     const userB = await registerUserWithAccount("frank-calendar@example.com");
     const today = isoDate(0);
@@ -169,6 +198,16 @@ describe("calendar", () => {
         transactionDate: today,
         merchant: "Salary",
       })
+      .expect(201);
+    const goalA = await http()
+      .post("/goals")
+      .set("Authorization", `Bearer ${userA.accessToken}`)
+      .send({ name: "Emergency Fund", targetAmountMinorUnits: 500000, accountId: userA.accountId })
+      .expect(201);
+    await http()
+      .post(`/goals/${goalA.body.id}/contributions`)
+      .set("Authorization", `Bearer ${userA.accessToken}`)
+      .send({ amountMinorUnits: 10000 })
       .expect(201);
 
     const entriesForB = await http()

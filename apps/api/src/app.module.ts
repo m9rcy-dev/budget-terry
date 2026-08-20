@@ -10,6 +10,7 @@ import { CalendarModule } from "./calendar/calendar.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { validateEnv } from "./config/env";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { GoalsModule } from "./goals/goals.module";
 import { HealthController } from "./health/health.controller";
 import { PrismaModule } from "./prisma/prisma.module";
 import { TransactionsModule } from "./transactions/transactions.module";
@@ -26,6 +27,7 @@ import { TransactionsModule } from "./transactions/transactions.module";
     BudgetsModule,
     BillsModule,
     CalendarModule,
+    GoalsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],
