@@ -155,4 +155,27 @@ describe("ApiClient", () => {
     await expect(client.restoreSession()).resolves.toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("binds the default fetch implementation, matching the real Fetch API's `this` requirement", async () => {
+    // The real browser Fetch API throws "Illegal invocation" if called with
+    // `this` set to anything other than the global object — reproduced here
+    // rather than relying on jsdom/node-fetch, neither of which enforce it,
+    // which is exactly how this regressed unnoticed by every prior test.
+    const fakeNativeFetch = function (this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      return Promise.resolve(jsonResponse(200, { ok: true }));
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fakeNativeFetch as unknown as typeof fetch;
+
+    try {
+      const client = new ApiClient({ baseUrl: "https://api.example.com" });
+      const result = await client.request<{ ok: boolean }>("/health");
+      expect(result).toEqual({ ok: true });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

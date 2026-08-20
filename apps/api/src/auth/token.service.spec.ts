@@ -8,6 +8,7 @@ function fakeConfigService(overrides: Partial<Env> = {}): ConfigService<Env, tru
     DATABASE_URL: "postgresql://test",
     AUTH_SECRET: "test-secret-that-is-at-least-32-characters-long",
     API_PORT: 3001,
+    WEB_ORIGIN: "http://localhost:3000",
     ACCESS_TOKEN_TTL_SECONDS: 900,
     REFRESH_TOKEN_TTL_DAYS: 30,
     LOG_LEVEL: "info",

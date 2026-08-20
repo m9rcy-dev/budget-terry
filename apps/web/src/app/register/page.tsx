@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { ApiError } from "@budget-terry/api-client";
 import { registerSchema, type RegisterInput } from "@budget-terry/validation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,8 +24,12 @@ export default function RegisterPage() {
     try {
       await registerUser(values);
       router.push("/dashboard");
-    } catch {
-      setErrorMessage("Could not create an account with those details.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError
+          ? "Could not create an account with those details."
+          : "Could not reach the server. Is the API running?",
+      );
     }
   };
 

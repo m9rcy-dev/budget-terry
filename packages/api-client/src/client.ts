@@ -48,7 +48,11 @@ export class ApiClient {
 
   constructor(config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
-    this.fetchImpl = config.fetchImpl ?? fetch;
+    // The native Fetch API requires `this` to be the global object when
+    // called — capturing the bare function and later invoking it as
+    // `this.fetchImpl(...)` throws "Illegal invocation" in real browsers.
+    // Binding here (rather than at every call site) keeps callers simple.
+    this.fetchImpl = config.fetchImpl ?? fetch.bind(globalThis);
     this.tokenStorage = config.tokenStorage;
   }
 

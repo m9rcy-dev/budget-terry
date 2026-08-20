@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { ApiError } from "@budget-terry/api-client";
 import { loginSchema, type LoginInput } from "@budget-terry/validation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,8 +24,16 @@ export default function LoginPage() {
     try {
       await login(values);
       router.push("/dashboard");
-    } catch {
-      setErrorMessage("Invalid email or password.");
+    } catch (error) {
+      // A non-ApiError here means the request never got a response at all
+      // (network failure, CORS rejection, API not running) — that's a
+      // different problem than a wrong password and shouldn't be labeled
+      // as one.
+      setErrorMessage(
+        error instanceof ApiError
+          ? "Invalid email or password."
+          : "Could not reach the server. Is the API running?",
+      );
     }
   };
 
