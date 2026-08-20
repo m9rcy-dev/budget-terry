@@ -163,6 +163,7 @@ Migrations live under `apps/api/prisma/migrations/`. Deployment applies migratio
 - **API can't reach Postgres** — confirm `docker compose up -d` is running (`docker compose ps`) and that `apps/api/.env`'s `DATABASE_URL` matches `docker-compose.yml`'s credentials.
 - **Mobile can't resolve a `@budget-terry/*` package** — this is a pnpm + Metro monorepo issue; `apps/mobile/metro.config.js` handles it, but if you hit a fresh resolution error, clear the Metro cache: `pnpm --filter @budget-terry/mobile exec expo start --clear`.
 - **Web login/register always fails, even with correct credentials** — this is almost always the web app unable to reach the API, not a real credentials problem. Check: (1) is `apps/api` actually running (`curl http://localhost:3001/health`)? (2) does `apps/api`'s `WEB_ORIGIN` match the URL the web app is actually served from? A mismatch causes the browser to silently block the request — curl still works fine against the API directly, which is what makes this confusing to diagnose.
+- **Web dev server shows `Server Error: Cannot find module './NNN.js'`** — a stale/corrupted `apps/web/.next` build cache, usually from the dev server being killed mid-build. Stop it, delete the cache, restart: `rm -rf apps/web/.next && pnpm --filter @budget-terry/web run dev`.
 
 ## Contributing
 
