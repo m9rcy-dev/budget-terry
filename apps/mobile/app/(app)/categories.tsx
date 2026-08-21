@@ -9,15 +9,15 @@ import {
   restoreCategory,
 } from "@budget-terry/api-client";
 import { colors, spacing } from "@budget-terry/ui";
-import { Button } from "../components/Button";
-import { EmptyState } from "../components/EmptyState";
-import { ErrorState } from "../components/ErrorState";
-import { LoadingState } from "../components/LoadingState";
-import { Screen } from "../components/Screen";
-import { Section } from "../components/Section";
-import { TextField } from "../components/TextField";
-import { apiClient } from "../lib/api-client";
-import { useAuth } from "../lib/auth-context";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { Screen } from "../../components/Screen";
+import { Section } from "../../components/Section";
+import { TextField } from "../../components/TextField";
+import { apiClient } from "../../lib/api-client";
+import { useAuth } from "../../lib/auth-context";
 
 export default function CategoriesScreen() {
   const { user, isLoading } = useAuth();
@@ -71,7 +71,7 @@ export default function CategoriesScreen() {
   }
 
   return (
-    <Screen title="Categories">
+    <Screen>
       <Section title="New category">
         <TextField placeholder="Category name" value={name} onChangeText={setName} />
         <Button onPress={onCreate}>Add category</Button>

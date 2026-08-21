@@ -1,7 +1,7 @@
 # Project Status
 
 Last Updated: 2026-08-21
-Current Phase: Phase 13 — Security Hardening (complete)
+Current Phase: Phase 13 — Security Hardening (complete); Post-Phase-13 navigation redesign also complete (off-roadmap, see below)
 Current Task: See Next Task below
 
 ## Completed
@@ -221,15 +221,28 @@ The plan's Section 60 list: threat model, auth security review, authorization te
 - **Backup/restore strategy** (new `docs/architecture/backup-restore.md`): local dev `pg_dump`/`pg_restore` commands against the Docker Postgres, and for production (Neon, per ADR-009) — Neon's own point-in-time recovery/branching as the primary mechanism, plus a documented (not yet automated) manual `pg_dump` export as defense-in-depth against relying on a single provider's built-in retention alone.
 - Verified `pnpm quality` passes end to end — exit code 0, 330 tests total (260 unit + 70 integration; +5 unit for the new request-logger middleware, +3 integration for rate limiting and security headers/logging). Booted `apps/api` and `apps/web` against the real local database mid-phase and confirmed live: rate-limit headers/429 behavior, helmet/CORS headers, and a real structured JSON log line, all via `curl` against running dev servers — then a full browser login → dashboard walkthrough (Chrome automation) confirming the new middleware stack is completely transparent to normal app usage. Hit the documented stale-`.next`-cache symptom a fourth time mid-phase (same class of issue as Post-Phase-4/Post-Phase-10/Phase-12 — the dev server hot-recompiling repeatedly across many file edits); resolved with the same known fix. Committed locally: "Harden API and web security for Phase 13".
 
+### Post-Phase-13 — Navigation Redesign (Sidebar/Drawer, Off-Roadmap)
+
+The user's own reaction to Phase 12's Warm Ledger theme: they like the warm palette, but the top nav bar itself ("the menu") reads as generic/unpolished, and asked to explore a visual refresh specifically for the nav, logo, and logout treatment — not a plan-numbered phase, an off-roadmap UX request. Two rounds of design exploration preceded any code:
+
+- First explored a "Spendee-inspired" vivid alternative theme on its own branch (`design/spendee-inspired-theme`, forked from `feature/v2`) with a written plan (`docs/design/spendee-inspired-theme-plan.md`) and a mockup artifact. The user's verdict: they prefer the current warm palette — the vivid direction read as generic "AI-generated dashboard app." That branch is left in place, unmerged, in case it's revisited later; **feature/v2 is unaffected and remains the active branch**.
+- Pivoted to exploring nav-only redesigns while staying on the Warm Ledger palette: two options (a modernized top bar vs. a left sidebar) shown via a mockup artifact, then the chosen sidebar direction shown again specifically for mobile web and the native app (drawer vs. bottom-tabs). The user picked: **left sidebar on desktop web, collapsing to a hamburger-triggered slide-out drawer on mobile web and in the native app** — consistent nav model across all three surfaces, no bottom-tab "which 5 sections matter most" decision to make.
+- **Web** (`apps/web`): `AppShell.tsx` rewritten — persistent left sidebar (`w-64`) on `md:` and up, `fixed`+`-translate-x-full`/`translate-x-0` slide-out drawer with a scrim below `md:`, auto-closes on route change. New `Logo.tsx` (badge-mark + wordmark, replacing plain bold text) and `icons.tsx` (a small hand-built SVG set — rect/line/circle/polygon primitives, no icon library dependency added) for the nine nav sections. The bare "Log out" text link is gone — the sidebar/drawer footer now shows an avatar (initials from `displayName`), name, email, and a dedicated logout icon button.
+- **Mobile** (`apps/mobile`): converted from a single `Stack` to an `expo-router` route group — `app/(app)/` now holds all nine authenticated screens under a real `Drawer` navigator (`@react-navigation/drawer`, new dependency, plus its peers `react-native-gesture-handler`/`react-native-reanimated`, installed via `npx expo install` for SDK 52-compatible versions), while `login.tsx`/`register.tsx` stay outside the group on the plain root `Stack`, unchanged. New `DrawerContent.tsx` mirrors the web sidebar's nav list/icons/account footer exactly (same design, `react-native-svg` port of the same icon shapes). `Screen.tsx` shrank to just a scrollable content wrapper — header (title + hamburger) and navigation now come from the Drawer navigator itself, not hand-rolled per screen.
+- **Found and fixed a real, pre-existing dependency-version drift while verifying this**: `npx expo export` (a full static bundle build, not something this project had ever run before — dev-server + Jest was the established mobile verification path) failed with a Fabric codegen crash inside `react-native-screens`. Root cause: `react-native-screens@4.27.0` was already far ahead of the SDK 52-expected `~4.4.0` (confirmed via `git diff` that this predates the session's own changes — not something the drawer work introduced), alongside four other packages in the same drifted state. Fixed with `npx expo install --fix`, which realigned `react-native-screens`, `react-native`, `react-native-safe-area-context`, `expo-secure-store`, and `expo-status-bar` to their SDK-expected versions. Re-ran `expo export` for both iOS and Android afterward — both bundle cleanly end to end (1469/1467 modules, zero errors) — the strongest verification available in this environment (no simulator/device access), stronger than the dev-server checks used in every prior mobile phase.
+- Also cleaned up two accidental artifacts the Expo tooling left behind mid-verification: a stray root-level `tsconfig.json` (Metro briefly resolved the monorepo root as the project root while troubleshooting a manual bundle-URL request; removed — nothing referenced it) and a regenerated `apps/mobile/tsconfig.json`/deleted `expo-env.d.ts` (legitimate Expo CLI housekeeping, confirmed harmless — `tsc --noEmit` passes cleanly without the removed file).
+- No dedicated component tests were added for `AppShell`/`Sidebar`/`DrawerContent` — consistent with `Screen.tsx` never having had its own tests either; both are verified via real bundling/build (web `next build`, mobile `expo export` ×2 platforms) and manual interaction testing (real browser drawer-toggle behavior via Chrome automation) rather than unit tests. Worth revisiting if this component surface grows more complex.
+- Verified `pnpm quality` passes end to end — exit code 0, 330 tests total (unchanged count — no tests added or removed by this work). Booted `apps/api` and `apps/web` against the real local database and walked through the sidebar in a real browser (Chrome automation): logo, active-state nav, account/logout footer, and the drawer's open/close/scrim-click behavior at the JS-state level all confirmed working on a live page, not just code review. Both mobile platforms verified via `expo export` as described above. Committed locally on `feature/v2` (not `design/spendee-inspired-theme`, which stays untouched).
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Phase 13 is complete. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only.
+The navigation redesign above is complete; Phase 13 itself was already complete before it started. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only.
 
-Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
+Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end. For `apps/mobile` specifically, `npx expo export --platform ios` / `--platform android` is now a proven, cheap way to catch real bundling issues (like the react-native-screens drift above) that dev-server-only checks miss — worth doing again whenever mobile dependencies change, not just this once.
 
 ## Known Issues
 
@@ -255,6 +268,9 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - No "log out everywhere" / revoke-all-sessions action exists, and there's no change-password endpoint either (the usual trigger for needing one) — see Phase 13's Session Expiration Review. Add together when a change-password feature is built.
 - No automated recurring dependency scan (CI step or Dependabot) exists yet — Phase 13's `pnpm audit` pass was a one-time manual review, not a scheduled one.
 - The manual `pg_dump` production backup described in `docs/architecture/backup-restore.md` isn't automated on a schedule yet — practical at current single-user, pre-launch scale, but worth automating before real user data accumulates.
+- `design/spendee-inspired-theme` branch exists (forked from `feature/v2` after Phase 13) with a written plan and mockups for a vivid alternative theme — explicitly not pursued (user preferred the current warm palette), left unmerged in case it's revisited. Not a blocker, just an unmerged branch to be aware of.
+- No dedicated component tests for the new `AppShell`/`Sidebar`/`DrawerContent` (web) or Drawer setup (mobile) — see Post-Phase-13 above. Verified via real bundling/build and manual interaction testing instead, consistent with `Screen.tsx` never having had its own tests either.
+- `apps/mobile`'s `@react-navigation/drawer`/`@react-navigation/native` versions have a one-patch-version peer mismatch (`7.13.9`/`7.9.2` wants `native@^7.3.17`, found `7.3.16`, pulled in transitively via `expo-router`) — cosmetic `pnpm install` warning only, both `expo export` platforms bundle and run cleanly regardless. Revisit only if `expo-router` itself bumps its `@react-navigation/native` pin.
 
 See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` through `ADR-011` for full rationale on each. Note ADR-003 was revised in place on 2026-08-15 (real auth built in Phase 3, not deferred) — read the revision note, not just the original Decision section.
 
@@ -326,11 +342,26 @@ curl http://localhost:3000/login -D -                              # X-Content-T
 # Real browser walkthrough (Chrome automation): login -> dashboard with real seeded
 # data, confirming the full new middleware stack (CORS/helmet/throttler/logging) is
 # transparent to normal app usage
+pnpm --filter @budget-terry/web run dev                           # boots cleanly with the new sidebar/drawer AppShell
+# Real browser walkthrough (Chrome automation) of the new sidebar: logo, active-state
+# nav, account/logout footer render correctly; clicked a nav link and confirmed routing
+# + active-state update; verified drawer open/close/scrim-click state transitions via
+# direct DOM/class inspection (window resize tool doesn't reliably change viewport in
+# this environment, so the responsive breakpoint itself relies on standard, well-tested
+# Tailwind md: classes rather than a literal narrow-viewport screenshot)
+npx expo install @react-navigation/drawer react-native-gesture-handler react-native-reanimated react-native-svg
+                                                                    # SDK 52-compatible versions resolved automatically
+npx expo install --check                                          # caught a pre-existing version drift (react-native-screens
+                                                                    # and 4 other packages) unrelated to this session's own changes
+npx expo install --fix                                            # realigned all 5 to SDK-expected versions
+npx expo export --platform ios                                    # 1469 modules, zero errors (first time this project has
+                                                                    # run a full static bundle build, not just the dev server)
+npx expo export --platform android                                # 1467 modules, zero errors
 ```
 
 ## Last Quality Gate
 
-PASS (2026-08-21) — `pnpm quality` exit code 0, 330 tests across the workspace (260 unit + 70 integration). Also verified by actually running `apps/api` and `apps/web` against the real local database mid-phase and confirming live: rate-limit 429 behavior, helmet/CORS response headers, and a real structured JSON request log line, all via `curl` against running dev servers — then a full browser login → dashboard walkthrough (Chrome automation) confirming the new security middleware stack doesn't break normal app usage.
+PASS (2026-08-21) — `pnpm quality` exit code 0, 330 tests across the workspace (260 unit + 70 integration; unchanged by the navigation redesign — no tests added or removed). Also verified: a real browser walkthrough of the new web sidebar (Chrome automation — logo, nav, active state, routing, account/logout footer, drawer state transitions), and both `apps/mobile` platforms bundling cleanly end to end via `expo export` (the strongest mobile verification available without simulator/device access, and stronger than every prior phase's dev-server-only check).
 
 ## Resume Instructions
 

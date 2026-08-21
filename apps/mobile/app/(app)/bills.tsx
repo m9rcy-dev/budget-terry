@@ -12,16 +12,16 @@ import {
   skipBillOccurrence,
 } from "@budget-terry/api-client";
 import { colors, radius, spacing } from "@budget-terry/ui";
-import { Button } from "../components/Button";
-import { EmptyState } from "../components/EmptyState";
-import { ErrorState } from "../components/ErrorState";
-import { LoadingState } from "../components/LoadingState";
-import { Screen } from "../components/Screen";
-import { Section } from "../components/Section";
-import { StatusDot } from "../components/StatusDot";
-import { TextField } from "../components/TextField";
-import { apiClient } from "../lib/api-client";
-import { useAuth } from "../lib/auth-context";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { Screen } from "../../components/Screen";
+import { Section } from "../../components/Section";
+import { StatusDot } from "../../components/StatusDot";
+import { TextField } from "../../components/TextField";
+import { apiClient } from "../../lib/api-client";
+import { useAuth } from "../../lib/auth-context";
 
 const RECURRENCES = ["ONE_OFF", "WEEKLY", "FORTNIGHTLY", "MONTHLY", "QUARTERLY", "YEARLY"] as const;
 
@@ -130,7 +130,7 @@ export default function BillsScreen() {
   }
 
   return (
-    <Screen title="Bills">
+    <Screen>
       <Section title="New bill">
         <TextField placeholder="Bill name" value={name} onChangeText={setName} />
         <TextField

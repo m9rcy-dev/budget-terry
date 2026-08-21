@@ -4,13 +4,13 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Account, AnalyticsSummary, Category } from "@budget-terry/types";
 import { getAnalyticsSummary, listAccounts, listCategories } from "@budget-terry/api-client";
 import { colors, radius, spacing } from "@budget-terry/ui";
-import { EmptyState } from "../components/EmptyState";
-import { ErrorState } from "../components/ErrorState";
-import { LoadingState } from "../components/LoadingState";
-import { Screen } from "../components/Screen";
-import { Section } from "../components/Section";
-import { apiClient } from "../lib/api-client";
-import { useAuth } from "../lib/auth-context";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { Screen } from "../../components/Screen";
+import { Section } from "../../components/Section";
+import { apiClient } from "../../lib/api-client";
+import { useAuth } from "../../lib/auth-context";
 
 function minorUnitsToDollars(value: number): string {
   return (value / 100).toFixed(2);
@@ -79,7 +79,7 @@ export default function AnalyticsScreen() {
   }
 
   return (
-    <Screen title="Analytics">
+    <Screen>
       <Section>
         <View style={styles.row}>
           <Pressable

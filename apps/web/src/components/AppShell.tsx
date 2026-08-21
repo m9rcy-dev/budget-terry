@@ -1,32 +1,59 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
+import {
+  AccountsIcon,
+  AnalyticsIcon,
+  BillsIcon,
+  BudgetsIcon,
+  CalendarIcon,
+  CategoriesIcon,
+  CloseIcon,
+  DashboardIcon,
+  GoalsIcon,
+  LogoutIcon,
+  MenuIcon,
+  TransactionsIcon,
+} from "./icons";
+import { Logo } from "./Logo";
 
 const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/transactions", label: "Transactions" },
-  { href: "/accounts", label: "Accounts" },
-  { href: "/categories", label: "Categories" },
-  { href: "/budgets", label: "Budgets" },
-  { href: "/bills", label: "Bills" },
-  { href: "/calendar", label: "Calendar" },
-  { href: "/goals", label: "Goals" },
-  { href: "/analytics", label: "Analytics" },
+  { href: "/dashboard", label: "Dashboard", Icon: DashboardIcon },
+  { href: "/transactions", label: "Transactions", Icon: TransactionsIcon },
+  { href: "/accounts", label: "Accounts", Icon: AccountsIcon },
+  { href: "/categories", label: "Categories", Icon: CategoriesIcon },
+  { href: "/budgets", label: "Budgets", Icon: BudgetsIcon },
+  { href: "/bills", label: "Bills", Icon: BillsIcon },
+  { href: "/calendar", label: "Calendar", Icon: CalendarIcon },
+  { href: "/goals", label: "Goals", Icon: GoalsIcon },
+  { href: "/analytics", label: "Analytics", Icon: AnalyticsIcon },
 ];
 
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
+  return (first + last).toUpperCase() || "?";
+}
+
 /**
- * Shared header/nav/container for every authenticated page — replaces
- * the `<nav>` block that used to be hand-copied onto each page
- * separately (a real drift risk after 9 phases of adding links one page
- * at a time). Plan Section 75: navigation consistency.
+ * Left sidebar on desktop, a hamburger-triggered slide-out drawer on
+ * narrow viewports — replaces the old wrapping top nav bar. Same nav
+ * list/icons/account footer in both presentations, not two components
+ * to keep in sync (plan Section 75: navigation consistency).
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    setIsDrawerOpen(false);
+  }, [pathname]);
 
   const onLogout = async (): Promise<void> => {
     await logout();
@@ -34,48 +61,104 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-6 py-4">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <Link href="/dashboard" className="text-base font-semibold text-accent-primary">
-              Budget Terry
-            </Link>
-            <nav aria-label="Main" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {NAV_LINKS.map((link) => {
-                const isActive = pathname === link.href;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    aria-current={isActive ? "page" : undefined}
-                    className={
-                      isActive
-                        ? "font-medium text-accent-primary"
-                        : "text-text-secondary hover:text-text-primary"
-                    }
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-          {user && (
-            <div className="flex items-center gap-3 text-sm text-text-secondary">
-              <span className="hidden sm:inline">{user.displayName}</span>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="underline underline-offset-2 hover:text-text-primary"
+    <div className="flex min-h-screen bg-background">
+      {isDrawerOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setIsDrawerOpen(false)}
+          className="fixed inset-0 z-30 bg-text-primary/40 md:hidden"
+        />
+      )}
+
+      <aside
+        id="app-sidebar"
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-surface p-4 transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+          isDrawerOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="mb-6 flex items-center justify-between px-1">
+          <Logo />
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setIsDrawerOpen(false)}
+            className="text-text-secondary hover:text-text-primary md:hidden"
+          >
+            <CloseIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5">
+          {NAV_LINKS.map(({ href, label, Icon }) => {
+            const isActive = pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={isActive ? "page" : undefined}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] font-medium ${
+                  isActive
+                    ? "bg-accent-primary/10 font-semibold text-accent-primary"
+                    : "text-text-secondary hover:bg-background hover:text-text-primary"
+                }`}
               >
-                Log out
-              </button>
+                <Icon className="h-[17px] w-[17px] shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {user && (
+          <div className="mt-2 flex items-center gap-2.5 border-t border-border pt-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-secondary text-[11px] font-bold text-accent-primary">
+              {initials(user.displayName)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12.5px] font-semibold text-text-primary">
+                {user.displayName}
+              </p>
+              <p className="truncate text-[11px] text-text-secondary">{user.email}</p>
             </div>
+            <button
+              type="button"
+              onClick={onLogout}
+              aria-label="Log out"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-background hover:text-text-primary"
+            >
+              <LogoutIcon className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 md:hidden">
+          <button
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded={isDrawerOpen}
+            aria-controls="app-sidebar"
+            onClick={() => setIsDrawerOpen(true)}
+            className="text-text-primary"
+          >
+            <MenuIcon className="h-5 w-5" />
+          </button>
+          <Logo compact />
+          {user ? (
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-secondary text-[11px] font-bold text-accent-primary">
+              {initials(user.displayName)}
+            </span>
+          ) : (
+            <span className="h-7 w-7" />
           )}
         </div>
-      </header>
-      <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">{children}</main>
+
+        <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

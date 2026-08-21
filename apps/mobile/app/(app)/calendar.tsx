@@ -8,13 +8,13 @@ import {
   skipBillOccurrence,
 } from "@budget-terry/api-client";
 import { colors, spacing } from "@budget-terry/ui";
-import { EmptyState } from "../components/EmptyState";
-import { ErrorState } from "../components/ErrorState";
-import { LoadingState } from "../components/LoadingState";
-import { Screen } from "../components/Screen";
-import { StatusDot } from "../components/StatusDot";
-import { apiClient } from "../lib/api-client";
-import { useAuth } from "../lib/auth-context";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { Screen } from "../../components/Screen";
+import { StatusDot } from "../../components/StatusDot";
+import { apiClient } from "../../lib/api-client";
+import { useAuth } from "../../lib/auth-context";
 
 const BILL_STATUS_COLOR: Record<string, string> = {
   UPCOMING: colors.billUpcoming,
@@ -126,7 +126,7 @@ export default function CalendarScreen() {
   });
 
   return (
-    <Screen title="Calendar">
+    <Screen>
       <View style={styles.header}>
         <Text style={styles.monthLabel}>{monthLabel}</Text>
         <View style={styles.navRow}>

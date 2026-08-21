@@ -4,15 +4,15 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Budget, Category } from "@budget-terry/types";
 import { createBudget, deleteBudget, listBudgets, listCategories } from "@budget-terry/api-client";
 import { colors, radius, spacing } from "@budget-terry/ui";
-import { Button } from "../components/Button";
-import { EmptyState } from "../components/EmptyState";
-import { ErrorState } from "../components/ErrorState";
-import { LoadingState } from "../components/LoadingState";
-import { Screen } from "../components/Screen";
-import { Section } from "../components/Section";
-import { TextField } from "../components/TextField";
-import { apiClient } from "../lib/api-client";
-import { useAuth } from "../lib/auth-context";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { Screen } from "../../components/Screen";
+import { Section } from "../../components/Section";
+import { TextField } from "../../components/TextField";
+import { apiClient } from "../../lib/api-client";
+import { useAuth } from "../../lib/auth-context";
 
 const PERIODS = ["WEEKLY", "FORTNIGHTLY", "MONTHLY"] as const;
 
@@ -138,7 +138,7 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <Screen title="Budgets">
+    <Screen>
       <Section title="New budget">
         <View style={styles.row}>
           {PERIODS.map((p) => (

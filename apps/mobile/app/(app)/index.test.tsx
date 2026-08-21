@@ -11,7 +11,7 @@ jest.mock("expo-router", () => {
   };
 });
 
-jest.mock("../lib/api-client", () => ({ apiClient: {} }));
+jest.mock("../../lib/api-client", () => ({ apiClient: {} }));
 
 const mockGetDashboardSummary = jest.fn();
 jest.mock("@budget-terry/api-client", () => ({
@@ -20,7 +20,7 @@ jest.mock("@budget-terry/api-client", () => ({
 
 const mockLogout = jest.fn();
 const mockUseAuth = jest.fn();
-jest.mock("../lib/auth-context", () => ({
+jest.mock("../../lib/auth-context", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
@@ -47,7 +47,6 @@ describe("HomeScreen", () => {
 
     render(<HomeScreen />);
 
-    expect(screen.getByText("Budget Terry")).toBeTruthy();
     expect(screen.getByText("Logged in as Person (person@example.com)")).toBeTruthy();
     await waitFor(() => expect(mockGetDashboardSummary).toHaveBeenCalled());
   });

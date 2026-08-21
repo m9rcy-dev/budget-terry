@@ -9,15 +9,15 @@ import {
   restoreAccount,
 } from "@budget-terry/api-client";
 import { colors, radius, spacing } from "@budget-terry/ui";
-import { Button } from "../components/Button";
-import { EmptyState } from "../components/EmptyState";
-import { ErrorState } from "../components/ErrorState";
-import { LoadingState } from "../components/LoadingState";
-import { Screen } from "../components/Screen";
-import { Section } from "../components/Section";
-import { TextField } from "../components/TextField";
-import { apiClient } from "../lib/api-client";
-import { useAuth } from "../lib/auth-context";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { Screen } from "../../components/Screen";
+import { Section } from "../../components/Section";
+import { TextField } from "../../components/TextField";
+import { apiClient } from "../../lib/api-client";
+import { useAuth } from "../../lib/auth-context";
 
 const ACCOUNT_TYPES = ["EVERYDAY", "SAVINGS", "CREDIT_CARD", "CASH", "OTHER"] as const;
 
@@ -74,7 +74,7 @@ export default function AccountsScreen() {
   }
 
   return (
-    <Screen title="Accounts">
+    <Screen>
       <Section title="New account">
         <TextField placeholder="Account name" value={name} onChangeText={setName} />
         <View style={styles.typeRow}>

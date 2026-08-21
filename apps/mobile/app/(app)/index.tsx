@@ -4,12 +4,12 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 import type { DashboardSummary } from "@budget-terry/types";
 import { getDashboardSummary } from "@budget-terry/api-client";
 import { colors, spacing } from "@budget-terry/ui";
-import { EmptyState } from "../components/EmptyState";
-import { LoadingState } from "../components/LoadingState";
-import { Screen } from "../components/Screen";
-import { Section } from "../components/Section";
-import { apiClient } from "../lib/api-client";
-import { useAuth } from "../lib/auth-context";
+import { EmptyState } from "../../components/EmptyState";
+import { LoadingState } from "../../components/LoadingState";
+import { Screen } from "../../components/Screen";
+import { Section } from "../../components/Section";
+import { apiClient } from "../../lib/api-client";
+import { useAuth } from "../../lib/auth-context";
 
 function minorUnitsToDollars(value: number): string {
   return (value / 100).toFixed(2);
@@ -38,7 +38,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <Screen title="Budget Terry">
+    <Screen>
       <Text style={styles.subtitle}>
         Logged in as {user.displayName} ({user.email})
       </Text>
