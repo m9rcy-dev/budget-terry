@@ -1,7 +1,7 @@
 # Project Status
 
-Last Updated: 2026-08-20
-Current Phase: Phase 12 — UX Polish (complete)
+Last Updated: 2026-08-21
+Current Phase: Phase 13 — Security Hardening (complete)
 Current Task: See Next Task below
 
 ## Completed
@@ -205,13 +205,29 @@ The plan's Section 60 catch-all revisiting existing screens rather than adding n
 - **Performance review** (plan Section 55): confirmed already compliant from earlier phases, no changes needed — all four suggested indexes exist in the Prisma schema (`transaction(userId, transactionDate)`, `transaction(userId, categoryId, transactionDate)`, `billOccurrence(userId, dueDate)`, `savingsGoal(userId, status)`), transactions are server-paginated, dashboard/analytics use single aggregate endpoints (Phases 6/11), and goal progress is deliberately computed live rather than cached (Phase 10, with an inline comment citing this exact plan section).
 - Verified `pnpm quality` passes end to end — exit code 0, 321 tests total (255 unit + 66 integration; +2 from `packages/ui`'s new token tests, replacing its Phase 1 placeholder test). Booted `apps/api` and `apps/web` against the real local database mid-phase (not just at the end) and visually smoke-tested Login, Dashboard, Transactions, Bills (including creating a real bill and confirming `StatusDot` colours/labels render correctly), Calendar, Accounts, Goals, and Analytics (including the Recharts colours) in a real browser (Chrome automation) after every batch of page rewrites, not just once at the end. Hit the documented stale-`.next`-cache symptom again mid-phase (this project's third time — see Post-Phase-4 and Post-Phase-10 above for the same class of issue) from the dev server hot-recompiling repeatedly across ~20 file edits; resolved with the same known fix (`rm -rf apps/web/.next` + restart), not a new bug. Committed locally: "Apply Warm Ledger design system across web and mobile (Phase 12)".
 
+### Phase 13 — Security Hardening
+
+The plan's Section 60 list: threat model, auth security review, authorization tests, dependency scan, secret scan, rate limiting, security headers, session expiration, logging review, sensitive-data review, backup/restore strategy. Almost entirely `apps/api` — the two exceptions are `apps/web/next.config.mjs` (security headers) and the root `package.json` (dependency overrides). Full detail for every item lives in `docs/architecture/security.md` (updated with five new dated sections this phase) and the new `docs/architecture/threat-model.md` and `docs/architecture/backup-restore.md`; this entry is the summary.
+
+- **Authorization test coverage audit**: no code changes needed — every one of the 10 resource types already had a dedicated `CRITICAL` cross-user isolation integration test (grepped and confirmed complete: accounts, categories, transactions, budgets, bills, calendar, goals, dashboard, analytics, auth), each covering read/edit/mutate/delete and consistently returning 404 rather than 403.
+- **Dependency vulnerability scan**: `pnpm audit` found 90 advisories. Three real, safely-fixable production-runtime findings (`body-parser`, `multer`, `lodash`, all transitive via `@nestjs/platform-express`/`@nestjs/config`) patched via a new `pnpm.overrides` block in the root `package.json` — verified the quality gate stayed green after. Two significant findings (`next`, 21 advisories; `@nestjs/core`, an SSE-injection CVE this app can't hit since it has no `@Sse()` endpoint) both require a major-version upgrade with real breaking-change risk and were **deliberately deferred**, not fixed — attempting a Next.js 14→15 migration inside a security-hardening phase, right after Phase 12 rebuilt all 8 web pages, would have been exactly the kind of scope creep this project has consistently avoided. Everything else in the audit resolved to dev/build tooling (`@nestjs/cli`, `testcontainers`, Expo/Metro, `vitest`) never present in what a user's browser or phone actually runs.
+- **Secret scan**: clean. No `.env` was ever committed at any point in this project's history (checked via `git log --all --diff-filter=A`), a broad grep for common secret-shaped patterns across every tracked file found nothing, and all three `.env.example` files contain only placeholders or genuinely public config.
+- **Rate limiting** (`@nestjs/throttler`, new dependency): app-wide default of 100 req/min per IP, tightened to 20 req/min on `/auth/login`, `/auth/register`, `/auth/refresh` specifically — these run argon2id hashing or issue real tokens, so the limit is as much about denying CPU-exhaustion DoS as it is about slowing credential guessing. Proven with a real request burst, not just code review: a new `rate-limit.integration-spec.ts` fires 21 rapid `/auth/login` calls against a dedicated fresh app instance (kept separate from `auth.integration-spec.ts` deliberately, so the burst doesn't eat into that file's own register-call budget) and asserts the 21st gets `429`; also manually confirmed against a running dev server with `curl` (20× `401`, then `429`).
+- **Security headers**: `helmet` added to `apps/api` (CSP deliberately disabled — pure JSON API, nothing for a content policy to protect; every other default applies). `apps/web/next.config.mjs` gained `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, and `poweredByHeader: false`. Both verified live against real running dev servers with `curl`, not just code review.
+- **Closed a real, structural testing gap while wiring up helmet**: CORS middleware had lived only in `main.ts` since the Post-Phase-10 CORS bug fix, meaning `apps/api/test/integration-app.ts`'s test harness never exercised it — the exact blind spot that let that original bug through 10 phases of "verified with curl" testing. Extracted both CORS and the new helmet/logging middleware into a shared `src/configure-app.ts`, called by both `main.ts` and the integration test harness — a regression in either now fails `pnpm test:integration`, not just a manual browser check. New `security-headers.integration-spec.ts` asserts the actual headers and CORS behavior on a real request/response cycle.
+- **Structured request logging**: `LOG_LEVEL` had been defined in the env schema since Phase 3 but was completely unused — no logging of any kind existed anywhere in the app until this phase. New `src/common/request-logger.middleware.ts` emits one JSON line per request with plan Section 40's exact recommended fields (`correlationId`, `method`, `path`, `statusCode`, `durationMs`, `userId` where authenticated), deliberately never touching `req.body`/`res.body` so passwords/tokens/financial payloads can't leak through it by construction. `LOG_LEVEL` now actually gates something: `warn`/`error` suppress the per-request log line entirely (the correlation-id response header still always gets set). 5 new unit tests plus a real dev-server `curl` check confirming actual JSON log lines.
+- **Auth security review, session expiration review, sensitive-data review**: all three confirmed already solid from Phase 3/ADR-011 — no code changes came out of any of them, only documentation. Notable confirmed-not-a-bug findings: algorithm-confusion attacks don't apply to this app's HS256-only single-shared-secret design (no asymmetric keypair anywhere for the classic attack to exploit); login's generic error message vs. register's `409 Conflict` is a deliberate, reviewed asymmetry, not an inconsistency; multiple simultaneous sessions (web + mobile logged in at once) are intentional, not a gap.
+- **Threat model** (new `docs/architecture/threat-model.md`): assets, actors, trust boundaries, and nine specific threats (IDOR, credential theft, token theft, forged tokens, XSS, injection, DoS, vulnerable dependencies, committed secrets) each with its concrete mitigation and any accepted residual risk, cross-referenced against this phase's other findings rather than duplicating them.
+- **Backup/restore strategy** (new `docs/architecture/backup-restore.md`): local dev `pg_dump`/`pg_restore` commands against the Docker Postgres, and for production (Neon, per ADR-009) — Neon's own point-in-time recovery/branching as the primary mechanism, plus a documented (not yet automated) manual `pg_dump` export as defense-in-depth against relying on a single provider's built-in retention alone.
+- Verified `pnpm quality` passes end to end — exit code 0, 330 tests total (260 unit + 70 integration; +5 unit for the new request-logger middleware, +3 integration for rate limiting and security headers/logging). Booted `apps/api` and `apps/web` against the real local database mid-phase and confirmed live: rate-limit headers/429 behavior, helmet/CORS headers, and a real structured JSON log line, all via `curl` against running dev servers — then a full browser login → dashboard walkthrough (Chrome automation) confirming the new middleware stack is completely transparent to normal app usage. Hit the documented stale-`.next`-cache symptom a fourth time mid-phase (same class of issue as Post-Phase-4/Post-Phase-10/Phase-12 — the dev server hot-recompiling repeatedly across many file edits); resolved with the same known fix. Committed locally: "Harden API and web security for Phase 13".
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Phase 12 is complete. Re-read plan Section 60 for Phase 13 scope (the plan's own Known Issues above already flag two concrete Phase-13 candidates: structured error model per Section 50, and rate limiting on auth endpoints per Section 39).
+Phase 13 is complete. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only.
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end.
 
@@ -220,7 +236,7 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - A few Section 69 review questions remain informally open (NZD-only for V2? multiple financial accounts in MVP? household budgeting postponed confirmed?) — minor/confirmatory, not architecturally blocking.
 - `apps/mobile` peer-dependency warning: `jest-expo`'s `react-server-dom-webpack` wants a React 19 RC while the app pins React 18.3.1. Harmless so far; recheck after any Expo SDK upgrade.
 - Prisma's `package.json#prisma` seed config is deprecated as of Prisma 6, removed in Prisma 7 (currently on 6.19.3) — migrate to `prisma.config.ts` on the next major upgrade.
-- Structured error model (plan Section 50), rate limiting on auth endpoints (plan Section 39, Phase 13 scope) — both deliberately deferred, documented in `docs/architecture/security.md`'s Known Gaps.
+- Structured error model (plan Section 50 — `{ code, message, correlationId }`) isn't implemented; errors still use Nest's default exception JSON shape. Deliberately deferred, documented in `docs/architecture/security.md`'s Known Gaps — worth doing once there's more than one API consumer relying on error shapes. (Rate limiting, the other item once tracked here, was implemented in Phase 13 above.)
 - Web/mobile Accounts/Categories UI supports create/archive/restore but not inline editing yet (rename/change-type) — the API supports it (`PATCH`), the UI just doesn't expose it. Small follow-up, not a blocker.
 - Web/mobile Transactions UI doesn't expose changing which account/category a transaction belongs to during edit (only amount/merchant on web; mobile has no edit UI at all, by design — see Phase 5 above). The API supports full edits.
 - Dashboard's "current period" is still a calendar-month placeholder (Phase 6), not aligned to a user's real budget period now that Phase 7 has one — small follow-up to make the dashboard period-aware, not a blocker.
@@ -235,6 +251,10 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - Dark mode is deliberately deferred, not built — see Phase 12 above. `tokens.ts` currently defines only a light-first Warm Ledger palette.
 - `textSecondary` (#70746F) on `background` (#F7F7F4) computes to roughly 4.4:1 contrast — just under WCAG AA's 4.5:1 for normal-size text (though above the 3:1 threshold for large text). This is a colour already in consistent use since Phase 8, not newly introduced in Phase 12; revisit only if it's ever raised as a real accessibility complaint, not preemptively.
 - Terry (plan Sections 71–73, the product-personality observation engine) has no assigned roadmap phase number and remains entirely unbuilt — see Phase 12 above for the explicit scoping decision.
+- `next` (21 `pnpm audit` advisories, several high-severity) and `@nestjs/core` (one moderate SSE-injection CVE this app doesn't expose) both need a major-version upgrade to fully resolve — deliberately deferred this phase given the breaking-change risk; see Phase 13 above and `docs/architecture/security.md`'s Dependency Vulnerability Scan section for the full reasoning.
+- No "log out everywhere" / revoke-all-sessions action exists, and there's no change-password endpoint either (the usual trigger for needing one) — see Phase 13's Session Expiration Review. Add together when a change-password feature is built.
+- No automated recurring dependency scan (CI step or Dependabot) exists yet — Phase 13's `pnpm audit` pass was a one-time manual review, not a scheduled one.
+- The manual `pg_dump` production backup described in `docs/architecture/backup-restore.md` isn't automated on a schedule yet — practical at current single-user, pre-launch scale, but worth automating before real user data accumulates.
 
 See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` through `ADR-011` for full rationale on each. Note ADR-003 was revised in place on 2026-08-15 (real auth built in Phase 3, not deferred) — read the revision note, not just the original Decision section.
 
@@ -292,18 +312,32 @@ pnpm test
 pnpm test:integration
 pnpm build
 pnpm quality        # PASS, exit code 0
+pnpm audit                                                         # 90 advisories reviewed; 3 patched via pnpm.overrides,
+                                                                    # rest documented as dev-tooling-only or deliberately deferred
+pnpm --filter @budget-terry/api run start:dev                     # boots cleanly with throttler/helmet/logging middleware
+curl http://localhost:3001/health -D -                            # Cross-Origin-Resource-Policy, Strict-Transport-Security,
+                                                                    # X-Content-Type-Options, X-Frame-Options, Access-Control-Allow-Origin
+                                                                    # all present on a real response
+for i in 1..22: curl -X POST /auth/login (bad credentials)        # attempts 1-20 -> 401, attempt 21+ -> 429 (rate limit confirmed live)
+curl http://localhost:3001/health                                 # produced a real structured JSON log line in the dev server output
+pnpm --filter @budget-terry/web run dev                           # boots cleanly with new next.config.mjs security headers
+curl http://localhost:3000/login -D -                              # X-Content-Type-Options, X-Frame-Options, Referrer-Policy present,
+                                                                    # X-Powered-By absent
+# Real browser walkthrough (Chrome automation): login -> dashboard with real seeded
+# data, confirming the full new middleware stack (CORS/helmet/throttler/logging) is
+# transparent to normal app usage
 ```
 
 ## Last Quality Gate
 
-PASS (2026-08-20) — `pnpm quality` exit code 0, 321 tests across the workspace (255 unit + 66 integration). Also verified by actually running `apps/api` and `apps/web` against the real local database mid-phase (repeatedly, after each batch of page rewrites, not just at the end) and visually checking Login, Dashboard, Transactions, Bills, Calendar, Accounts, Goals, and Analytics in a real browser (Chrome automation) — all rendered correctly with the Warm Ledger design system applied, including live-created data (a real bill) and chart colours pulled from the new design tokens.
+PASS (2026-08-21) — `pnpm quality` exit code 0, 330 tests across the workspace (260 unit + 70 integration). Also verified by actually running `apps/api` and `apps/web` against the real local database mid-phase and confirming live: rate-limit 429 behavior, helmet/CORS response headers, and a real structured JSON request log line, all via `curl` against running dev servers — then a full browser login → dashboard walkthrough (Chrome automation) confirming the new security middleware stack doesn't break normal app usage.
 
 ## Resume Instructions
 
 1. Read `docs/budget-terry-v2-plan-updated.md`.
 2. Read this file (`PROJECT_STATUS.md`).
 3. Read `AGENTS.md`.
-4. Read `docs/architecture/data-model.md`, `docs/architecture/security.md`, and `docs/adr/ADR-001` through `ADR-011` (especially the ADR-003 revision note and ADR-011).
+4. Read `docs/architecture/data-model.md`, `docs/architecture/security.md`, `docs/architecture/threat-model.md`, `docs/architecture/backup-restore.md`, and `docs/adr/ADR-001` through `ADR-011` (especially the ADR-003 revision note and ADR-011).
 5. Run `git status`.
 6. Confirm Docker Desktop is running (`docker compose up -d`) — local dev DB is already synced, no further action needed.
 7. Continue with the task listed under **Next Task** above.

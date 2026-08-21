@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import type { AuthResponse, AuthTokens, AuthenticatedUser } from "@budget-terry/types";
 import {
   loginSchema,
@@ -12,11 +13,21 @@ import { CurrentUser } from "./current-user.decorator";
 import { Public } from "./public.decorator";
 import type { AccessTokenPayload } from "./token.service";
 
+// Stricter than the app-wide default (100/min, app.module.ts): login and
+// register both run argon2id hashing/verification, which is deliberately
+// CPU-expensive — an unthrottled endpoint lets an attacker force that cost
+// repeatedly (a resource-exhaustion DoS) even without guessing anything.
+// 20/min per IP comfortably covers legitimate retries and the busiest
+// integration test file's ~11 rapid registrations, while still cutting an
+// automated attacker's throughput by roughly 100x. See plan Section 39.
+const AUTH_THROTTLE = { default: { limit: 20, ttl: 60_000 } };
+
 @Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @Post("register")
   register(
     @Body(new ZodValidationPipe(registerSchema)) body: RegisterInput,
@@ -25,6 +36,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @Post("login")
   @HttpCode(HttpStatus.OK)
   login(@Body(new ZodValidationPipe(loginSchema)) body: LoginInput): Promise<AuthResponse> {
@@ -35,6 +47,7 @@ export class AuthController {
   // already expired, which is exactly why they're calling this. The
   // refresh token in the body is what authenticates this request.
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
   refresh(@Body("refreshToken") refreshToken: string): Promise<AuthTokens> {

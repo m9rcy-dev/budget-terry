@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AccountsModule } from "./accounts/accounts.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AppController } from "./app.controller";
@@ -19,6 +21,10 @@ import { TransactionsModule } from "./transactions/transactions.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    // Baseline anti-abuse/DoS limit for every route (plan Section 39: "rate
+    // limiting for sensitive endpoints"). Sensitive auth endpoints override
+    // this with a stricter limit via @Throttle() — see auth.controller.ts.
+    ThrottlerModule.forRoot([{ name: "default", ttl: 60_000, limit: 100 }]),
     PrismaModule,
     AuthModule,
     AccountsModule,
@@ -32,6 +38,6 @@ import { TransactionsModule } from "./transactions/transactions.module";
     AnalyticsModule,
   ],
   controllers: [AppController, HealthController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
