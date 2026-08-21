@@ -38,6 +38,7 @@ apps/api/prisma/migrations/dev.db*
 *.log
 npm-debug.log*
 pnpm-debug.log*
+.dev-logs/
 
 # Vercel
 .vercel/

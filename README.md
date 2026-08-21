@@ -46,8 +46,6 @@ legacy/v1/    Original static V1 app (still deployed via GitHub Pages)
 
 ## Quick Start — Run the App Locally
 
-There's no single `pnpm dev` yet (see note below) — the API and web app run as two separate processes, each in its own terminal.
-
 1. **Install and configure.**
 
    ```bash
@@ -79,27 +77,24 @@ There's no single `pnpm dev` yet (see note below) — the API and web app run as
    | Email    | `dev@budgetterry.local`      |
    | Password | `dev-password-please-change` |
 
-4. **Start the API** (terminal 1):
+4. **Start the API and web app.**
 
    ```bash
-   pnpm --filter @budget-terry/api run start:dev
+   pnpm dev
    ```
 
-   Wait for `Nest application successfully started`, then confirm it's up:
+   This starts both in the background (logs at `.dev-logs/api.log` / `.dev-logs/web.log`), clears `apps/web/.next` first (avoids the stale-cache error below), and waits until both respond before returning. Re-running `pnpm dev` at any time stops and restarts both — that's the "one command" for the whole local app. `pnpm dev:stop` / `pnpm dev:start` are also available if you want to stop or start without the other half. See `scripts/dev.sh`.
+
+   Prefer separate terminals (e.g. to watch each app's own log output directly)? Run them individually instead:
 
    ```bash
-   curl http://localhost:3001/health   # {"status":"ok"}
+   pnpm --filter @budget-terry/api run start:dev     # terminal 1
+   pnpm --filter @budget-terry/web run dev           # terminal 2
    ```
 
-5. **Start the web app** (terminal 2):
+5. **Open [http://localhost:3000/login](http://localhost:3000/login)** and log in with the seeded credentials above, or register a new account.
 
-   ```bash
-   pnpm --filter @budget-terry/web run dev
-   ```
-
-6. **Open [http://localhost:3000/login](http://localhost:3000/login)** and log in with the seeded credentials above, or register a new account.
-
-`pnpm dev` is not yet wired to a single command across all three apps — for now, run each app individually. This will be revisited once there's enough running concurrently to be worth it.
+`apps/mobile` isn't included in `pnpm dev` — Expo's own workflow (simulator/device/QR code) doesn't fit the same background-and-poll model; run it separately with `pnpm --filter @budget-terry/mobile run start`.
 
 ## Environment Configuration
 
@@ -119,8 +114,9 @@ The Prisma schema lives at `apps/api/prisma/schema.prisma`. Domain models are in
 ## Running Each App
 
 ```bash
-pnpm --filter @budget-terry/api run start:dev     # API on http://localhost:3001
-pnpm --filter @budget-terry/web run dev           # Web on http://localhost:3000
+pnpm dev                                          # API + web together (see Quick Start above)
+pnpm --filter @budget-terry/api run start:dev     # API only, on http://localhost:3001
+pnpm --filter @budget-terry/web run dev           # Web only, on http://localhost:3000
 pnpm --filter @budget-terry/mobile run start      # Expo dev server (scan QR / press i / a)
 ```
 
@@ -163,7 +159,7 @@ Migrations live under `apps/api/prisma/migrations/`. Deployment applies migratio
 - **API can't reach Postgres** — confirm `docker compose up -d` is running (`docker compose ps`) and that `apps/api/.env`'s `DATABASE_URL` matches `docker-compose.yml`'s credentials.
 - **Mobile can't resolve a `@budget-terry/*` package** — this is a pnpm + Metro monorepo issue; `apps/mobile/metro.config.js` handles it, but if you hit a fresh resolution error, clear the Metro cache: `pnpm --filter @budget-terry/mobile exec expo start --clear`.
 - **Web login/register always fails, even with correct credentials** — this is almost always the web app unable to reach the API, not a real credentials problem. Check: (1) is `apps/api` actually running (`curl http://localhost:3001/health`)? (2) does `apps/api`'s `WEB_ORIGIN` match the URL the web app is actually served from? A mismatch causes the browser to silently block the request — curl still works fine against the API directly, which is what makes this confusing to diagnose.
-- **Web dev server shows `Server Error: Cannot find module './NNN.js'`** — a stale/corrupted `apps/web/.next` build cache, usually from the dev server being killed mid-build. Stop it, delete the cache, restart: `rm -rf apps/web/.next && pnpm --filter @budget-terry/web run dev`.
+- **Web dev server shows `Server Error: Cannot find module './NNN.js'`** — a stale/corrupted `apps/web/.next` build cache, usually from the dev server being killed mid-build. `pnpm dev` clears this cache on every start, so it's the easiest fix: `pnpm dev`. Doing it by hand: `rm -rf apps/web/.next && pnpm --filter @budget-terry/web run dev`.
 
 ## Contributing
 

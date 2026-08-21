@@ -16,7 +16,10 @@
     "test:integration": "pnpm -r --if-present run test:integration",
     "build": "pnpm -r --if-present run build",
     "quality": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build",
-    "db:migrate": "pnpm --filter @budget-terry/api run db:migrate"
+    "db:migrate": "pnpm --filter @budget-terry/api run db:migrate",
+    "dev": "bash scripts/dev.sh restart",
+    "dev:start": "bash scripts/dev.sh start",
+    "dev:stop": "bash scripts/dev.sh stop"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
