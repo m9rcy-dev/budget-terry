@@ -90,6 +90,14 @@ The plan's critical rule, and the single most important threat this app faces gi
 
 - **Mitigation**: `.gitignore` covers all `.env*` variants except `.env.example`; confirmed via `git log --all` that no `.env` file was ever committed at any point in this project's history. See `security.md`'s Secret Scan section for the full check performed this phase.
 
+### T10 — Login code interception or brute force (Post-Phase-13, passwordless email login)
+
+A new auth surface added after this document was first written — the same asset (T1's financial records) is now also reachable via a 6-digit emailed code, not just a password.
+
+- **Mitigation**: three independent layers — a 10-minute expiry, a 5-attempt-per-code lockout (the primary defense against the code's small 1,000,000-value keyspace), and IP-level rate limiting on both the request and verify endpoints. Full detail in `security.md`'s Passwordless Email Login section.
+- **A new threat this method specifically introduces that a password doesn't: email account compromise.** Whoever controls the recipient's email inbox can request and read a login code without knowing anything else about the account. This is a real, deliberately accepted trade-off of choosing email-based passwordless auth at all, not something this app's own code can mitigate — the user's email provider's own security (its password, its own MFA) becomes part of Budget Terry's effective security boundary. Worth being explicit about rather than leaving implicit.
+- **Residual risk**: see `security.md` for the accepted, low-probability 6-digit collision-across-users risk, and the note that IP-based throttling can be shared across users behind the same NAT (same limitation as T2's login throttle).
+
 ## Out of Scope (Deliberately, Not Forgotten)
 
 - **CSRF** — not a concern under the current Bearer-token-in-header approach (no ambient browser-attached credential for a malicious page to ride along with). Would need revisiting only if the app ever moves to HTTP-only cookie auth (see ADR-011).

@@ -35,4 +35,30 @@ describe("rate limiting", () => {
 
     await http().post("/auth/login").send(credentials).expect(429);
   });
+
+  it("throttles repeated /auth/login-code/request attempts from the same client", async () => {
+    // 10/min (auth.controller.ts) — always 204 regardless of whether the
+    // email exists, so no user needs to be registered for this.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await http()
+        .post("/auth/login-code/request")
+        .send({ email: "nobody@example.com" })
+        .expect(204);
+    }
+
+    await http().post("/auth/login-code/request").send({ email: "nobody@example.com" }).expect(429);
+  });
+
+  it("throttles repeated /auth/login-code/verify attempts from the same client", async () => {
+    // 20/min (auth.controller.ts) — always 401 against an unknown email,
+    // so this exercises the IP-level cap independently of the per-code
+    // attempt lockout (which is scoped to a real user's real code).
+    const attempt = { email: "nobody@example.com", code: "000000" };
+
+    for (let i = 0; i < 20; i += 1) {
+      await http().post("/auth/login-code/verify").send(attempt).expect(401);
+    }
+
+    await http().post("/auth/login-code/verify").send(attempt).expect(429);
+  });
 });

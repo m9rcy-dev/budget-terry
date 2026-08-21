@@ -17,5 +17,23 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local SMTP catcher for dev — apps/api sends real SMTP traffic here
+  # instead of a real provider (MAIL_PROVIDER=smtp, SMTP_HOST=localhost,
+  # SMTP_PORT=1025, no auth). View caught mail at http://localhost:8025.
+  # Production points the same SmtpMailProvider at MailerLite's SMTP
+  # relay instead — swap env vars, not code.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: budget-terry-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8025/api/v1/info"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   budget-terry-postgres-data:

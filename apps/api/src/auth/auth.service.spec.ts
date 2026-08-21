@@ -1,4 +1,5 @@
 import { ConflictException, UnauthorizedException } from "@nestjs/common";
+import type { MailService } from "../mail/mail.service";
 import type { PrismaService } from "../prisma/prisma.service";
 import { AuthService } from "./auth.service";
 import type { PasswordService } from "./password.service";
@@ -20,6 +21,12 @@ function buildAuthService() {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    loginCode: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
   };
   const passwordService = {
     hash: jest.fn(),
@@ -33,15 +40,25 @@ function buildAuthService() {
       expiresAt: new Date(Date.now() + 1000),
     })),
     hashRefreshToken: jest.fn((token: string) => `${token}-hash`),
+    generateLoginCode: jest.fn(() => ({
+      code: "042817",
+      codeHash: "042817-hash",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    })),
+    hashLoginCode: jest.fn((code: string) => `${code}-hash`),
+  };
+  const mailService = {
+    sendLoginCode: jest.fn(),
   };
 
   const authService = new AuthService(
     prisma as unknown as PrismaService,
     passwordService as unknown as PasswordService,
     tokenService as unknown as TokenService,
+    mailService as unknown as MailService,
   );
 
-  return { authService, prisma, passwordService, tokenService };
+  return { authService, prisma, passwordService, tokenService, mailService };
 }
 
 describe("AuthService", () => {
@@ -194,6 +211,118 @@ describe("AuthService", () => {
       await expect(authService.refresh("expired-token")).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe("requestLoginCode", () => {
+    it("generates, stores, and emails a code when the email has an account", async () => {
+      const { authService, prisma, mailService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "user-1",
+        email: "person@example.com",
+        displayName: "Person",
+      });
+
+      await authService.requestLoginCode("person@example.com");
+
+      expect(prisma.loginCode.updateMany).toHaveBeenCalledWith({
+        where: { userId: "user-1", consumedAt: null },
+        data: { consumedAt: expect.any(Date) },
+      });
+      expect(prisma.loginCode.create).toHaveBeenCalledWith({
+        data: { userId: "user-1", codeHash: "042817-hash", expiresAt: expect.any(Date) },
+      });
+      expect(mailService.sendLoginCode).toHaveBeenCalledWith("person@example.com", "042817");
+    });
+
+    it("does nothing (no code, no email) for an unknown address, without revealing that", async () => {
+      const { authService, prisma, mailService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(authService.requestLoginCode("nobody@example.com")).resolves.toBeUndefined();
+
+      expect(prisma.loginCode.create).not.toHaveBeenCalled();
+      expect(mailService.sendLoginCode).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("verifyLoginCode", () => {
+    it("issues tokens for a correct, unexpired, not-yet-locked-out code", async () => {
+      const { authService, prisma, tokenService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "user-1",
+        email: "person@example.com",
+        displayName: "Person",
+      });
+      prisma.loginCode.findFirst.mockResolvedValue({
+        id: "code-1",
+        codeHash: "042817-hash",
+        attempts: 0,
+      });
+      tokenService.hashLoginCode.mockReturnValue("042817-hash");
+
+      const result = await authService.verifyLoginCode("person@example.com", "042817");
+
+      expect(prisma.loginCode.update).toHaveBeenCalledWith({
+        where: { id: "code-1" },
+        data: { consumedAt: expect.any(Date) },
+      });
+      expect(result.accessToken).toBe("access-token");
+    });
+
+    it("rejects an unknown email with the same generic message as a bad code", async () => {
+      const { authService, prisma } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        authService.verifyLoginCode("nobody@example.com", "042817"),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it("rejects when there's no live (unconsumed, unexpired) code for the user", async () => {
+      const { authService, prisma } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue({ id: "user-1", email: "person@example.com" });
+      prisma.loginCode.findFirst.mockResolvedValue(null);
+
+      await expect(
+        authService.verifyLoginCode("person@example.com", "042817"),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it("increments attempts and rejects on a wrong code, without consuming it", async () => {
+      const { authService, prisma, tokenService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue({ id: "user-1", email: "person@example.com" });
+      prisma.loginCode.findFirst.mockResolvedValue({
+        id: "code-1",
+        codeHash: "042817-hash",
+        attempts: 1,
+      });
+      tokenService.hashLoginCode.mockReturnValue("wrong-guess-hash");
+
+      await expect(
+        authService.verifyLoginCode("person@example.com", "999999"),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(prisma.loginCode.update).toHaveBeenCalledWith({
+        where: { id: "code-1" },
+        data: { attempts: { increment: 1 } },
+      });
+    });
+
+    it("rejects once the code has already hit the max attempt count, even with the right code", async () => {
+      const { authService, prisma, tokenService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue({ id: "user-1", email: "person@example.com" });
+      prisma.loginCode.findFirst.mockResolvedValue({
+        id: "code-1",
+        codeHash: "042817-hash",
+        attempts: 5,
+      });
+      tokenService.hashLoginCode.mockReturnValue("042817-hash");
+
+      await expect(
+        authService.verifyLoginCode("person@example.com", "042817"),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prisma.loginCode.update).not.toHaveBeenCalled();
     });
   });
 

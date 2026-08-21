@@ -4,11 +4,14 @@ import { Test } from "@nestjs/testing";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/configure-app";
+import { MAIL_PROVIDER } from "../src/mail/mail-provider.interface";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { FakeMailProvider } from "./fake-mail.provider";
 
 export interface IntegrationApp {
   app: INestApplication;
   prisma: PrismaService;
+  mail: FakeMailProvider;
   stop: () => Promise<void>;
 }
 
@@ -29,7 +32,11 @@ export async function startIntegrationApp(): Promise<IntegrationApp> {
     stdio: "inherit",
   });
 
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const mail = new FakeMailProvider();
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(MAIL_PROVIDER)
+    .useValue(mail)
+    .compile();
   const app = moduleRef.createNestApplication();
   configureApp(app);
   await app.init();
@@ -39,6 +46,7 @@ export async function startIntegrationApp(): Promise<IntegrationApp> {
   return {
     app,
     prisma,
+    mail,
     stop: async () => {
       await app.close();
       await container.stop();

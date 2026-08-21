@@ -129,6 +129,37 @@ describe("ApiClient", () => {
     expect(await tokenStorage.getRefreshToken()).toBe("refresh-1");
   });
 
+  it("requestLoginCode posts the email and doesn't touch token state", async () => {
+    const fetchImpl = vi.fn(async () => emptyResponse(204)) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl });
+
+    await expect(client.requestLoginCode("a@example.com")).resolves.toBeUndefined();
+
+    const [url, init] = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://api.example.com/auth/login-code/request");
+    expect(JSON.parse(init.body as string)).toEqual({ email: "a@example.com" });
+  });
+
+  it("verifyLoginCode stores the access token in memory and the refresh token via tokenStorage", async () => {
+    const tokenStorage = createMemoryTokenStorage();
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(200, {
+        user: { id: "user-1", email: "a@example.com", displayName: "A" },
+        accessToken: "access-1",
+        refreshToken: "refresh-1",
+      }),
+    ) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
+
+    const user = await client.verifyLoginCode("a@example.com", "042817");
+
+    expect(user.email).toBe("a@example.com");
+    expect(await tokenStorage.getRefreshToken()).toBe("refresh-1");
+  });
+
   it("logout clears local token state and calls the API best-effort", async () => {
     const tokenStorage = createMemoryTokenStorage("refresh-1");
     const fetchImpl = vi.fn(async () => emptyResponse(204)) as unknown as typeof fetch;

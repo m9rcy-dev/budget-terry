@@ -57,11 +57,13 @@ legacy/v1/    Original static V1 app (still deployed via GitHub Pages)
 
    The defaults in `apps/api/.env.example` work as-is for local dev — no edits needed to get started.
 
-2. **Start local Postgres.**
+2. **Start local Postgres and Mailpit.**
 
    ```bash
    docker compose up -d
    ```
+
+   Mailpit is a local SMTP catcher — the API sends real SMTP traffic to it instead of a real provider, and you can read caught mail (including login codes) at [http://localhost:8025](http://localhost:8025). No setup needed; `apps/api/.env.example`'s defaults already point at it.
 
 3. **Run migrations and seed a dev account.**
 
@@ -92,7 +94,7 @@ legacy/v1/    Original static V1 app (still deployed via GitHub Pages)
    pnpm --filter @budget-terry/web run dev           # terminal 2
    ```
 
-5. **Open [http://localhost:3000/login](http://localhost:3000/login)** and log in with the seeded credentials above, or register a new account.
+5. **Open [http://localhost:3000/login](http://localhost:3000/login)**. Passwordless email code is the default login method: enter `dev@budgetterry.local`, click "Send code", then read the 6-digit code from [Mailpit](http://localhost:8025) (it won't arrive in a real inbox locally). Prefer the password? Click "Log in with password instead" and use the seeded credentials above.
 
 `apps/mobile` isn't included in `pnpm dev` — Expo's own workflow (simulator/device/QR code) doesn't fit the same background-and-poll model; run it separately with `pnpm --filter @budget-terry/mobile run start`.
 
@@ -101,6 +103,8 @@ legacy/v1/    Original static V1 app (still deployed via GitHub Pages)
 Copy `.env.example` → `.env` at the root and inside `apps/api/`, `apps/web/`, and `apps/mobile/` as needed. Local development always points at the Dockerized Postgres started by `docker compose up -d` — never at the hosted Neon instance (see ADR-009). Never commit `.env` files or real secrets.
 
 `apps/api`'s `WEB_ORIGIN` (default `http://localhost:3000`) controls CORS — the API only accepts browser requests from this origin. If you run the web app on a different port, update `WEB_ORIGIN` to match or the browser will silently block every request to the API.
+
+`apps/api`'s `MAIL_*`/`SMTP_*` vars control where login-code emails go. Locally they default to the Mailpit container from `docker-compose.yml` — no changes needed. In production, point the same `SMTP_*` vars at a real provider's SMTP relay (e.g. MailerLite) rather than switching code — see `src/mail/mail.module.ts` and `docs/architecture/security.md`.
 
 ## Database Setup
 
@@ -160,6 +164,7 @@ Migrations live under `apps/api/prisma/migrations/`. Deployment applies migratio
 - **Mobile can't resolve a `@budget-terry/*` package** — this is a pnpm + Metro monorepo issue; `apps/mobile/metro.config.js` handles it, but if you hit a fresh resolution error, clear the Metro cache: `pnpm --filter @budget-terry/mobile exec expo start --clear`.
 - **Web login/register always fails, even with correct credentials** — this is almost always the web app unable to reach the API, not a real credentials problem. Check: (1) is `apps/api` actually running (`curl http://localhost:3001/health`)? (2) does `apps/api`'s `WEB_ORIGIN` match the URL the web app is actually served from? A mismatch causes the browser to silently block the request — curl still works fine against the API directly, which is what makes this confusing to diagnose.
 - **Web dev server shows `Server Error: Cannot find module './NNN.js'`** — a stale/corrupted `apps/web/.next` build cache, usually from the dev server being killed mid-build. `pnpm dev` clears this cache on every start, so it's the easiest fix: `pnpm dev`. Doing it by hand: `rm -rf apps/web/.next && pnpm --filter @budget-terry/web run dev`.
+- **Login code never arrives** — locally it's never emailed anywhere real; check [http://localhost:8025](http://localhost:8025) (Mailpit's web UI), not an actual inbox. If nothing shows up there either, confirm the `mailpit` container is running (`docker compose ps`) and that `apps/api`'s `SMTP_HOST`/`SMTP_PORT` still point at `localhost:1025`.
 
 ## Contributing
 

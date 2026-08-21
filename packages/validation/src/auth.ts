@@ -15,5 +15,16 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+export const requestLoginCodeSchema = z.object({
+  email: z.string().email(),
+});
+
+export const verifyLoginCodeSchema = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type RequestLoginCodeInput = z.infer<typeof requestLoginCodeSchema>;
+export type VerifyLoginCodeInput = z.infer<typeof verifyLoginCodeSchema>;

@@ -4,8 +4,12 @@ import type { AuthResponse, AuthTokens, AuthenticatedUser } from "@budget-terry/
 import {
   loginSchema,
   registerSchema,
+  requestLoginCodeSchema,
+  verifyLoginCodeSchema,
   type LoginInput,
   type RegisterInput,
+  type RequestLoginCodeInput,
+  type VerifyLoginCodeInput,
 } from "@budget-terry/validation";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { AuthService } from "./auth.service";
@@ -21,6 +25,20 @@ import type { AccessTokenPayload } from "./token.service";
 // integration test file's ~11 rapid registrations, while still cutting an
 // automated attacker's throughput by roughly 100x. See plan Section 39.
 const AUTH_THROTTLE = { default: { limit: 20, ttl: 60_000 } };
+
+// Tighter than AUTH_THROTTLE: requesting a code has a real external cost
+// (an email send) and a real abuse surface (flooding someone else's
+// inbox) that login/register don't have.
+const REQUEST_CODE_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
+
+// Same as AUTH_THROTTLE — verifying a 6-digit code has a much smaller
+// keyspace than a password, but the primary defense against brute force
+// is AuthService's own per-code attempt lockout (MAX_LOGIN_CODE_ATTEMPTS
+// = 5), which is what actually stops guessing *one* issued code. This
+// IP-level cap is defense-in-depth on top of that, not a replacement for
+// it — an attacker spread across many IPs would evade this alone
+// regardless of how tight it is.
+const VERIFY_CODE_THROTTLE = { default: { limit: 20, ttl: 60_000 } };
 
 @Controller("auth")
 export class AuthController {
@@ -52,6 +70,26 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   refresh(@Body("refreshToken") refreshToken: string): Promise<AuthTokens> {
     return this.authService.refresh(refreshToken);
+  }
+
+  @Public()
+  @Throttle(REQUEST_CODE_THROTTLE)
+  @Post("login-code/request")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async requestLoginCode(
+    @Body(new ZodValidationPipe(requestLoginCodeSchema)) body: RequestLoginCodeInput,
+  ): Promise<void> {
+    await this.authService.requestLoginCode(body.email);
+  }
+
+  @Public()
+  @Throttle(VERIFY_CODE_THROTTLE)
+  @Post("login-code/verify")
+  @HttpCode(HttpStatus.OK)
+  verifyLoginCode(
+    @Body(new ZodValidationPipe(verifyLoginCodeSchema)) body: VerifyLoginCodeInput,
+  ): Promise<AuthResponse> {
+    return this.authService.verifyLoginCode(body.email, body.code);
   }
 
   @Public()

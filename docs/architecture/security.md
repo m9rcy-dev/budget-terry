@@ -10,9 +10,25 @@ Passwords are hashed with **argon2id** (`argon2` package), OWASP's current recom
 
 - `POST /auth/register` — creates a user, hashes the password, seeds the 15 default categories for that user, returns tokens.
 - `POST /auth/login` — verifies credentials, returns tokens. A wrong password and an unknown email return the **identical** generic message (`"Invalid email or password."`) — never reveal which one was wrong.
+- `POST /auth/login-code/request` / `POST /auth/login-code/verify` — passwordless email login, the default on both frontends (see below).
 - `POST /auth/refresh` — exchanges a valid, unexpired, unrevoked refresh token for a new access token **and a new refresh token** (rotation — the old one is revoked in the same operation).
 - `POST /auth/logout` — revokes the presented refresh token server-side.
 - `GET /auth/me` — returns the authenticated user; requires a valid access token.
+
+## Passwordless Email Login (Post-Phase-13)
+
+The default login method on both `apps/web` and `apps/mobile` — password login still works, reachable via a "Log in with password instead" link, not removed.
+
+- **Flow**: `POST /auth/login-code/request { email }` always returns `204`, whether or not the email has an account — same non-enumeration principle as password login's generic error message. If the email does match a user, a 6-digit code is generated, hashed (SHA-256, same "only the hash is stored" principle as refresh tokens — see `LoginCode` in `schema.prisma`), and emailed via `MailService`. `POST /auth/login-code/verify { email, code }` returns the same `AuthResponse` shape (user + tokens) as `/auth/login`/`/auth/register` on success.
+- **Code generation**: `crypto.randomInt(0, 1_000_000)` (cryptographically secure, not `Math.random`), zero-padded to 6 digits. `TokenService.generateLoginCode()`/`hashLoginCode()`, alongside the existing refresh-token methods.
+- **Three independent defenses against a 6-digit code's small keyspace** (1,000,000 possibilities, far fewer than a password or a 48-byte refresh token):
+  1. **Short expiry** — `LOGIN_CODE_TTL_MINUTES` (default 10).
+  2. **Per-code attempt lockout** — `MAX_LOGIN_CODE_ATTEMPTS = 5` in `AuthService`. A code becomes permanently unusable after 5 wrong guesses, independent of IP or request volume — this is the primary brute-force defense, not the rate limiter below.
+  3. **Per-IP rate limiting** — `/request` at 10/min (tighter than the general `AUTH_THROTTLE`, since it has a real external cost: an email send), `/verify` at 20/min (same as `AUTH_THROTTLE` — deliberately not tighter, since the attempt lockout above is what actually stops guessing one issued code; this is defense-in-depth on top of it, not a replacement).
+- **Single-use and self-invalidating**: a code is marked consumed on successful verification (can't be replayed), and requesting a new code immediately invalidates any previous still-unconsumed one for that user (`updateMany` before `create`) — only ever one live code per user.
+- **Accepted residual risk, not a bug**: two different users could plausibly be issued the _same_ 6-digit code around the same time (a real, if small, collision chance at only 1,000,000 possible values — unlike refresh tokens' 48 random bytes, which are unique with overwhelming probability). This isn't exploitable in practice: `verifyLoginCode` always scopes its comparison to the _submitted email's own_ latest code, so a coincidental hash match on someone else's code doesn't help an attacker who doesn't know the victim's email is even in play, and both the 5-attempt lockout and 10-minute expiry bound the exposure window regardless. Verified explicitly with a `CRITICAL` integration test asserting one user's real code is rejected against a different user's email.
+- **Email delivery is provider-swappable by design**: `apps/api/src/mail/mail-provider.interface.ts` defines a `MailProvider` interface; `SmtpMailProvider` (nodemailer) is the only implementation so far, configured entirely via env vars (`SMTP_HOST`/`PORT`/`SECURE`/`USER`/`PASSWORD`, `MAIL_FROM`). The same class serves local dev (Mailpit, `docker-compose.yml`, no auth) and is intended to serve production (MailerLite's SMTP relay) — switching is a config change, not a code change. A provider that only exposes an HTTP API (no SMTP) would get its own `MailProvider` implementation selected in `mail.module.ts`'s factory, without touching `AuthService` or any caller. **Not yet done**: actually wiring real MailerLite credentials into a production environment — that's Phase 14 (Deployment) scope, tracked in Known Issues below, not this work.
+- **Integration-tested with a fake mail provider, not a real SMTP dependency**: `apps/api/test/fake-mail.provider.ts` overrides the `MAIL_PROVIDER` DI token in the integration test harness (`test/integration-app.ts`) so tests never depend on Mailpit being reachable — and so tests can observe the plaintext code at all, since the database only ever stores its hash. 7 integration tests cover the full round trip, silent no-op for unknown emails, wrong-code rejection, cross-user isolation (CRITICAL), attempt lockout, previous-code invalidation, and single-use; 17 unit tests cover the same logic at the service layer; 2 dedicated rate-limit tests assert the exact `429` boundary on both endpoints.
 
 ## Tokens
 
@@ -32,7 +48,7 @@ Both send the access token as `Authorization: Bearer <token>` — not an HTTP-on
 
 ## Authorization: Every Route Is Protected By Default
 
-`JwtAuthGuard` is registered globally (`APP_GUARD`) — **every route requires a valid access token unless explicitly marked `@Public()`**. This is a fail-safe default: a new endpoint added later without thinking about auth is protected, not accidentally open. Currently `@Public()`: `GET /` (root info), `GET /health`, and the four `/auth/*` endpoints that authenticate by other means (credentials or a refresh token in the body, not an access token).
+`JwtAuthGuard` is registered globally (`APP_GUARD`) — **every route requires a valid access token unless explicitly marked `@Public()`**. This is a fail-safe default: a new endpoint added later without thinking about auth is protected, not accidentally open. Currently `@Public()`: `GET /` (root info), `GET /health`, and every `/auth/*` endpoint except `GET /auth/me` — each of those authenticates by other means (credentials, an email code, or a refresh token in the body, not an access token).
 
 ## Rate Limiting (Phase 13)
 
@@ -99,6 +115,7 @@ This is enforced two ways:
 
 - **Structured error model** (plan Section 50 — `{ code, message, correlationId }`) isn't implemented yet; errors currently use Nest's default exception JSON shape. Worth doing once there's more than one API consumer relying on error shapes.
 - **CSRF** isn't a concern under the current Bearer-token approach (no ambient credentials for a malicious page to ride along with) — revisit only if/when the HTTP-only-cookie option above is adopted.
+- **Production email provider isn't wired up yet** — `SmtpMailProvider` is built and works against Mailpit locally, but no real MailerLite (or other) SMTP credentials exist in any deployed environment yet, because no environment is deployed yet (Phase 14). Wiring it is expected to be an env var change, not a code change, per the swappable design above — worth confirming that expectation holds once Phase 14 actually does it.
 
 ## Dependency Vulnerability Scan (Phase 13, 2026-08-21)
 

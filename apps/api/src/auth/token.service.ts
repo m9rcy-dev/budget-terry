@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
@@ -14,6 +14,14 @@ export interface GeneratedRefreshToken {
   token: string;
   /** Stored server-side; the raw token can't be recovered from this. */
   tokenHash: string;
+  expiresAt: Date;
+}
+
+export interface GeneratedLoginCode {
+  /** The 6-digit string emailed to the user — never stored. */
+  code: string;
+  /** Stored server-side; the raw code can't be recovered from this. */
+  codeHash: string;
   expiresAt: Date;
 }
 
@@ -52,5 +60,24 @@ export class TokenService {
 
   hashRefreshToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  /**
+   * Passwordless email login. Same "only the hash is stored" principle as
+   * the refresh token above, using crypto.randomInt (not Math.random) so
+   * the code is unguessable from anything but brute force — which is why
+   * AuthService also enforces a short expiry and a per-code attempt
+   * lockout on top of this. See LoginCode in schema.prisma.
+   */
+  generateLoginCode(): GeneratedLoginCode {
+    const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+    const ttlMinutes = this.configService.get("LOGIN_CODE_TTL_MINUTES", { infer: true });
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
+
+    return { code, codeHash: this.hashLoginCode(code), expiresAt };
+  }
+
+  hashLoginCode(code: string): string {
+    return createHash("sha256").update(code).digest("hex");
   }
 }

@@ -78,6 +78,20 @@ export class ApiClient {
     return response.user;
   }
 
+  /** Always resolves — the API never reveals whether the email has an account. */
+  async requestLoginCode(email: string): Promise<void> {
+    await this.request<void>("/auth/login-code/request", { method: "POST", body: { email } });
+  }
+
+  async verifyLoginCode(email: string, code: string): Promise<AuthenticatedUser> {
+    const response = await this.request<AuthResponse>("/auth/login-code/verify", {
+      method: "POST",
+      body: { email, code },
+    });
+    await this.applyAuthResponse(response);
+    return response.user;
+  }
+
   async logout(): Promise<void> {
     const refreshToken = await this.tokenStorage?.getRefreshToken();
     this.accessToken = null;

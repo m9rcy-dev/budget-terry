@@ -1,7 +1,7 @@
 # Project Status
 
-Last Updated: 2026-08-21
-Current Phase: Phase 13 — Security Hardening (complete); Post-Phase-13 navigation redesign also complete (off-roadmap, see below)
+Last Updated: 2026-08-22
+Current Phase: Phase 13 — Security Hardening (complete); two off-roadmap Post-Phase-13 items also complete (navigation redesign, passwordless email login — see below)
 Current Task: See Next Task below
 
 ## Completed
@@ -234,13 +234,28 @@ The user's own reaction to Phase 12's Warm Ledger theme: they like the warm pale
 - No dedicated component tests were added for `AppShell`/`Sidebar`/`DrawerContent` — consistent with `Screen.tsx` never having had its own tests either; both are verified via real bundling/build (web `next build`, mobile `expo export` ×2 platforms) and manual interaction testing (real browser drawer-toggle behavior via Chrome automation) rather than unit tests. Worth revisiting if this component surface grows more complex.
 - Verified `pnpm quality` passes end to end — exit code 0, 330 tests total (unchanged count — no tests added or removed by this work). Booted `apps/api` and `apps/web` against the real local database and walked through the sidebar in a real browser (Chrome automation): logo, active-state nav, account/logout footer, and the drawer's open/close/scrim-click behavior at the JS-state level all confirmed working on a live page, not just code review. Both mobile platforms verified via `expo export` as described above. Committed locally on `feature/v2` (not `design/spendee-inspired-theme`, which stays untouched).
 
+### Post-Phase-13 — Passwordless Email Login (Off-Roadmap)
+
+Explicit user request, not a plan-numbered phase: replace password as the primary login method with a 6-digit emailed code, keeping password login available behind a "Log in with password instead" link. User specified the infrastructure directly — Mailpit locally, MailerLite (free tier) in production, both reachable through one swappable SMTP abstraction rather than provider-specific code.
+
+- **`MailProvider` abstraction** (`apps/api/src/mail/`): a `MailProvider` interface with one implementation so far, `SmtpMailProvider` (nodemailer) — configured entirely via env vars (`SMTP_HOST`/`PORT`/`SECURE`/`USER`/`PASSWORD`, `MAIL_FROM`), so Mailpit locally and MailerLite's SMTP relay in production are the same class with different config, not different code. Selected via a `MAIL_PROVIDER` env var and a factory provider in `mail.module.ts`, with an exhaustiveness check (`never` type) that fails to compile if a second provider value is ever added without a matching case. `MailService.sendLoginCode()` owns the actual email copy, kept out of `AuthService`.
+- **Mailpit added to `docker-compose.yml`** — SMTP catcher on `:1025`, web UI at `http://localhost:8025`, now part of the same `docker compose up -d` that already started Postgres. `apps/api/.env.example`'s defaults point at it out of the box, no setup needed.
+- **New `LoginCode` Prisma model** (migration `20260821223221_add_login_codes`) — same "only the hash is stored" principle as `RefreshToken` (ADR-011): `codeHash` (SHA-256), `expiresAt`, `consumedAt` (single-use), `attempts` (per-code lockout counter). `TokenService` gained `generateLoginCode()`/`hashLoginCode()` alongside its existing refresh-token methods — `crypto.randomInt`, not `Math.random`.
+- **Three independent defenses against the 6-digit code's small keyspace** (1,000,000 possibilities, far smaller than a password or a 48-byte refresh token): a 10-minute expiry (`LOGIN_CODE_TTL_MINUTES`), a 5-attempt-per-code lockout in `AuthService` (the primary brute-force defense — a code becomes permanently unusable after 5 wrong guesses regardless of IP or request volume), and IP-level rate limiting on both new endpoints (10/min request, 20/min verify — full reasoning in `docs/architecture/security.md`'s new Passwordless Email Login section). A code is single-use and self-invalidating: requesting a new one immediately supersedes any previous still-live code for that user.
+- **`POST /auth/login-code/request`** always returns `204` whether or not the email has an account — same non-enumeration principle Phase 3's login already established, applied consistently to the new endpoint rather than left as a gap.
+- **Web** (`apps/web/src/app/login/page.tsx`) and **mobile** (`apps/mobile/app/login.tsx`) both rebuilt around three modes — email+"Send code" (default), 6-digit code entry, and password (behind a link) — sharing the same copy and flow, adapted to each platform's existing form primitives. Neither screen was a small tweak; both are effectively new implementations of the same design.
+- **Verified for real, not just against mocks**: booted `apps/api`+`apps/web` via `pnpm dev`, requested a code for the seeded dev account through the actual UI, read the real code out of Mailpit's API (`curl http://localhost:8025/api/v1/messages`), typed it into the running page, and landed on the dashboard — the full round trip through real SMTP delivery, not simulated.
+- **Testing**: integration tests can't depend on Mailpit being reachable (and it's the only way to observe a plaintext code at all, since the database only stores its hash) — `apps/api/test/fake-mail.provider.ts` overrides the `MAIL_PROVIDER` DI token in the test harness (`test/integration-app.ts`) and exposes what was "sent" for assertions. 7 new integration tests (full round trip, silent no-op for unknown emails, wrong-code rejection, cross-user isolation — CRITICAL, attempt lockout, previous-code invalidation, single-use) plus 2 dedicated rate-limit boundary tests; 17 new `AuthService` unit tests plus 1 for `MailService`; web/api-client tests updated for the new login flow and `ApiClient` methods.
+- **Deliberately not done this round**: wiring real MailerLite credentials into an actual deployed environment — no environment is deployed yet (that's Phase 14), and per the swappable design above it should be an env var change when that happens, not new code. Tracked in Known Issues below as something to confirm once Phase 14 actually does it.
+- Verified `pnpm quality` passes end to end — exit code 0, 360 tests total (281 unit + 79 integration; +58 unit / +9 integration over the pre-this-work count). Full real-browser + real-Mailpit round trip described above, plus `apps/mobile` verified via `expo export` on both platforms (1469 modules, zero errors) since no simulator/device is available in this environment. Committed locally on `feature/v2`.
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-The navigation redesign above is complete; Phase 13 itself was already complete before it started. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only.
+Both off-roadmap items above are complete; Phase 13 itself was already complete before either started. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only — and now also the point to wire real MailerLite credentials into whatever environment gets deployed first.
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end. For `apps/mobile` specifically, `npx expo export --platform ios` / `--platform android` is now a proven, cheap way to catch real bundling issues (like the react-native-screens drift above) that dev-server-only checks miss — worth doing again whenever mobile dependencies change, not just this once.
 
@@ -271,6 +286,9 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - `design/spendee-inspired-theme` branch exists (forked from `feature/v2` after Phase 13) with a written plan and mockups for a vivid alternative theme — explicitly not pursued (user preferred the current warm palette), left unmerged in case it's revisited. Not a blocker, just an unmerged branch to be aware of.
 - No dedicated component tests for the new `AppShell`/`Sidebar`/`DrawerContent` (web) or Drawer setup (mobile) — see Post-Phase-13 above. Verified via real bundling/build and manual interaction testing instead, consistent with `Screen.tsx` never having had its own tests either.
 - `apps/mobile`'s `@react-navigation/drawer`/`@react-navigation/native` versions have a one-patch-version peer mismatch (`7.13.9`/`7.9.2` wants `native@^7.3.17`, found `7.3.16`, pulled in transitively via `expo-router`) — cosmetic `pnpm install` warning only, both `expo export` platforms bundle and run cleanly regardless. Revisit only if `expo-router` itself bumps its `@react-navigation/native` pin.
+- No real MailerLite (or other) production email credentials exist anywhere yet — `SmtpMailProvider` is built and proven against Mailpit locally, but nothing is deployed for it to point at yet. Phase 14 (Deployment) scope; see Post-Phase-13 above.
+- Login-code emails have no styling beyond a plain inline `<p>`/font-size `html` body (`MailService.sendLoginCode`) — functional, not polished; revisit if email presentation ever matters beyond "the code is readable."
+- No "resend code" cooldown/backoff in the UI — the Resend link just calls the request endpoint again immediately, relying entirely on the server-side 10/min rate limit rather than disabling the button client-side for a few seconds. Minor UX polish, not a security gap (the server-side limit is what actually matters).
 
 See `AGENTS.md` §2 for the quick-reference summary, and `docs/adr/ADR-001` through `ADR-011` for full rationale on each. Note ADR-003 was revised in place on 2026-08-15 (real auth built in Phase 3, not deferred) — read the revision note, not just the original Decision section.
 
@@ -357,11 +375,21 @@ npx expo install --fix                                            # realigned al
 npx expo export --platform ios                                    # 1469 modules, zero errors (first time this project has
                                                                     # run a full static bundle build, not just the dev server)
 npx expo export --platform android                                # 1467 modules, zero errors
+docker compose up -d                                               # postgres + mailpit both healthy
+curl http://localhost:8025/api/v1/info                            # Mailpit API responds
+# Real browser + real Mailpit round trip (Chrome automation), not mocked:
+#   requested a code for dev@budgetterry.local through the actual login UI,
+#   read the real code back out via curl http://localhost:8025/api/v1/messages,
+#   typed it into the running page, landed on /dashboard
+pnpm --filter @budget-terry/api run test:integration               # 79/79 pass, incl. 7 login-code +
+                                                                    # 2 new rate-limit-boundary tests
+npx expo export --platform ios                                    # re-verified after login.tsx rewrite: 1469 modules, zero errors
+pnpm quality                                                       # PASS, exit code 0
 ```
 
 ## Last Quality Gate
 
-PASS (2026-08-21) — `pnpm quality` exit code 0, 330 tests across the workspace (260 unit + 70 integration; unchanged by the navigation redesign — no tests added or removed). Also verified: a real browser walkthrough of the new web sidebar (Chrome automation — logo, nav, active state, routing, account/logout footer, drawer state transitions), and both `apps/mobile` platforms bundling cleanly end to end via `expo export` (the strongest mobile verification available without simulator/device access, and stronger than every prior phase's dev-server-only check).
+PASS (2026-08-22) — `pnpm quality` exit code 0, 360 tests across the workspace (281 unit + 79 integration). Also verified: a real end-to-end passwordless-login round trip through the actual UI and real Mailpit-caught SMTP mail (not mocked), and `apps/mobile` bundling cleanly on both platforms via `expo export` (no simulator/device access in this environment).
 
 ## Resume Instructions
 
@@ -370,5 +398,5 @@ PASS (2026-08-21) — `pnpm quality` exit code 0, 330 tests across the workspace
 3. Read `AGENTS.md`.
 4. Read `docs/architecture/data-model.md`, `docs/architecture/security.md`, `docs/architecture/threat-model.md`, `docs/architecture/backup-restore.md`, and `docs/adr/ADR-001` through `ADR-011` (especially the ADR-003 revision note and ADR-011).
 5. Run `git status`.
-6. Confirm Docker Desktop is running (`docker compose up -d`) — local dev DB is already synced, no further action needed.
+6. Confirm Docker Desktop is running (`docker compose up -d`) — starts both Postgres and Mailpit (local dev DB is already synced, no further action needed).
 7. Continue with the task listed under **Next Task** above.

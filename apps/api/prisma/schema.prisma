@@ -90,6 +90,7 @@ model User {
   savingsGoals      SavingsGoal[]
   goalContributions GoalContribution[]
   refreshTokens     RefreshToken[]
+  loginCodes        LoginCode[]
 
   @@map("users")
 }
@@ -113,6 +114,30 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// LoginCode — passwordless email login. Same "only the hash is stored"
+// principle as RefreshToken. Single-use (consumedAt), short-lived
+// (expiresAt, LOGIN_CODE_TTL_MINUTES), and attempts is a per-code lockout
+// counter (independent of the request-rate-limiting on the endpoints
+// themselves — this defends against a burst of guesses against one
+// already-issued code, not just against repeated requests).
+// ---------------------------------------------------------------------------
+
+model LoginCode {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("login_codes")
 }
 
 // ---------------------------------------------------------------------------

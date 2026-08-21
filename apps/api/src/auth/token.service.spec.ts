@@ -12,6 +12,14 @@ function fakeConfigService(overrides: Partial<Env> = {}): ConfigService<Env, tru
     ACCESS_TOKEN_TTL_SECONDS: 900,
     REFRESH_TOKEN_TTL_DAYS: 30,
     LOG_LEVEL: "info",
+    MAIL_PROVIDER: "smtp",
+    SMTP_HOST: "localhost",
+    SMTP_PORT: 1025,
+    SMTP_SECURE: false,
+    SMTP_USER: "",
+    SMTP_PASSWORD: "",
+    MAIL_FROM: "Budget Terry <no-reply@budgetterry.local>",
+    LOGIN_CODE_TTL_MINUTES: 10,
     ...overrides,
   };
 
