@@ -3,8 +3,13 @@ services:
     name: budget-terry-api
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter "@budget-terry/api..." run build
-    preDeployCommand: pnpm --filter @budget-terry/api run db:deploy
+    # preDeployCommand would be the natural place for `prisma migrate
+    # deploy` (runs once per deploy, after build, before traffic swings to
+    # the new instance) but it isn't available on the free plan — folded
+    # into buildCommand instead, which still only runs on an actual
+    # deploy (a code push), not on every free-tier spin-down/spin-up
+    # (that's a plain restart of the already-built artifact, no rebuild).
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter "@budget-terry/api..." run build && pnpm --filter @budget-terry/api run db:deploy
     startCommand: pnpm --filter @budget-terry/api run start:prod
     healthCheckPath: /health
     domains:
