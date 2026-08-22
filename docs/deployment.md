@@ -4,7 +4,7 @@ Follows the hosting decision in [ADR-009](adr/ADR-009-hosting-and-deployment.md)
 
 **Scope of this first pass**: a single production environment only — no separate staging. Vercel preview deployments (per-branch/PR URLs) will be CORS-blocked by the API, since `WEB_ORIGIN` only allows one fixed origin. Accepted for a hobby-scale project (see ADR-009); revisit if this project ever needs a real staging environment.
 
-**Domains**: `m9rcy.dev` is registered and will host multiple projects, not just this one, so budget-terry gets its own subdomain rather than the root: **`budgetterry.m9rcy.dev`** (web) and **`api.budgetterry.m9rcy.dev`** (API) — nested under the project subdomain so a future project just becomes `foo.m9rcy.dev` + `api.foo.m9rcy.dev` without colliding with this one.
+**Domains**: `m9rcy.dev` is registered and will host multiple projects, not just this one, so budget-terry gets its own subdomain rather than the root: **`budget-terry.m9rcy.dev`** (web) and **`api.budget-terry.m9rcy.dev`** (API) — nested under the project subdomain so a future project just becomes `foo.m9rcy.dev` + `api.foo.m9rcy.dev` without colliding with this one.
 
 Every step below requires your own account credentials — none of this can be done on your behalf. Do them in order; several steps depend on values produced by an earlier one.
 
@@ -24,11 +24,11 @@ The repo's `render.yaml` is a [Blueprint](https://render.com/docs/infrastructure
    - `AUTH_SECRET` — generate one: `openssl rand -base64 48`. Never reuse the local-dev value from `.env`.
    - `RESEND_API_KEY` — from the Resend dashboard (API Keys).
    - `MAIL_FROM` — a verified sender on the `notify.m9rcy.dev` subdomain (step 4), e.g. `Budget Terry <no-reply@notify.m9rcy.dev>`.
-   - `WEB_ORIGIN` — set this to `https://budgetterry.m9rcy.dev` now (the intended final domain, not a placeholder) — you'll attach the domain to Vercel in step 3, but CORS just needs the string to match, so no need for a temporary value or coming back to fix it.
+   - `WEB_ORIGIN` — set this to `https://budget-terry.m9rcy.dev` now (the intended final domain, not a placeholder) — you'll attach the domain to Vercel in step 3, but CORS just needs the string to match, so no need for a temporary value or coming back to fix it.
 3. Deploy. First deploy runs `pnpm install`, `prisma generate && nest build` (via the `build` script), then `prisma migrate deploy` (the `preDeployCommand`, applying every migration in `apps/api/prisma/migrations/` to the fresh Neon database) before starting the service.
 4. Once live at Render's default `*.onrender.com` URL, verify: `curl https://<your-service>.onrender.com/health` should return `{"status":"ok"}`. If it doesn't, check the Render logs — a 500 here almost always means `DATABASE_URL` is wrong (the health check now pings the database, not just the process — see `docs/architecture/security.md`).
-5. **Attach the custom domain**: `render.yaml` already declares `domains: [api.budgetterry.m9rcy.dev]`, so Render's service settings will show it as a pending custom domain once the Blueprint syncs. Render displays the exact DNS record to add (a CNAME, typically pointing at your service's `*.onrender.com` hostname) — add that record at your DNS provider for `m9rcy.dev`. Propagation and TLS issuance can take a few minutes; Render's dashboard shows the domain going from "Pending" to "Verified".
-6. Once verified, re-check: `curl https://api.budgetterry.m9rcy.dev/health` should return the same `{"status":"ok"}`.
+5. **Attach the custom domain**: `render.yaml` already declares `domains: [api.budget-terry.m9rcy.dev]`, so Render's service settings will show it as a pending custom domain once the Blueprint syncs. Render displays the exact DNS record to add (a CNAME, typically pointing at your service's `*.onrender.com` hostname) — add that record at your DNS provider for `m9rcy.dev`. Propagation and TLS issuance can take a few minutes; Render's dashboard shows the domain going from "Pending" to "Verified".
+6. Once verified, re-check: `curl https://api.budget-terry.m9rcy.dev/health` should return the same `{"status":"ok"}`.
 7. Render's free tier spins the service down after inactivity — the first request after idle takes several seconds (a known, accepted trade-off, see ADR-009). Don't mistake this for a broken deploy.
 
 ## 3. Vercel (web)
@@ -36,10 +36,10 @@ The repo's `render.yaml` is a [Blueprint](https://render.com/docs/infrastructure
 1. **Add New → Project**, import the repo.
 2. **Root Directory**: set to `apps/web`.
 3. Framework should auto-detect as Next.js. Leave Build/Install/Output commands on their defaults — `apps/web/vercel.json` (committed in the repo) overrides just the build command to build `@budget-terry/types`/`@budget-terry/validation`/`@budget-terry/ui`/`@budget-terry/api-client` before `next build`, since `apps/web` consumes their compiled `dist` output, not raw source (same reason those packages need a manual rebuild in local dev — see `AGENTS.md`).
-4. Add one environment variable before deploying: `NEXT_PUBLIC_API_URL` = `https://api.budgetterry.m9rcy.dev` (the final API domain from step 2 — safe to reference even before its DNS/TLS finishes verifying, since this is just a string baked into the client bundle, not fetched at build time). This is baked in at build time, so it must be set before the first deploy, not after.
+4. Add one environment variable before deploying: `NEXT_PUBLIC_API_URL` = `https://api.budget-terry.m9rcy.dev` (the final API domain from step 2 — safe to reference even before its DNS/TLS finishes verifying, since this is just a string baked into the client bundle, not fetched at build time). This is baked in at build time, so it must be set before the first deploy, not after.
 5. Deploy. Vercel will initially be reachable only at its default `https://<project>.vercel.app` URL.
-6. **Add the custom domain**: in the project's Settings → Domains, add `budgetterry.m9rcy.dev`. Vercel shows the exact DNS record to add (typically a CNAME to `cname.vercel-dns.com`) — add it at your DNS provider for `m9rcy.dev`. Vercel issues TLS automatically once DNS resolves.
-7. `WEB_ORIGIN` on Render was already set to `https://budgetterry.m9rcy.dev` in step 2 — no need to come back and change it, since both domains were decided upfront.
+6. **Add the custom domain**: in the project's Settings → Domains, add `budget-terry.m9rcy.dev`. Vercel shows the exact DNS record to add (typically a CNAME to `cname.vercel-dns.com`) — add it at your DNS provider for `m9rcy.dev`. Vercel issues TLS automatically once DNS resolves.
+7. `WEB_ORIGIN` on Render was already set to `https://budget-terry.m9rcy.dev` in step 2 — no need to come back and change it, since both domains were decided upfront.
 
 > **If the Vercel build fails to find `@budget-terry/*` packages**: this is the one step in this runbook with genuine residual uncertainty — Vercel's exact monorepo build-sandboxing behavior with a Root Directory set wasn't something I could fully verify without an actual deploy. If the build log shows it can't resolve a workspace package, tell me the exact error and I'll adjust `apps/web/vercel.json` (the likely fix is dropping the Root Directory setting entirely and using a root-level `vercel.json` with an explicit `outputDirectory` instead).
 
@@ -68,9 +68,9 @@ The `eas.json` committed in the repo (`apps/mobile/eas.json`) already has the `p
 
 Once both custom domains are verified and live:
 
-1. Open `https://budgetterry.m9rcy.dev`, register a new account through the actual UI (not curl).
+1. Open `https://budget-terry.m9rcy.dev`, register a new account through the actual UI (not curl).
 2. Log out, log back in via the passwordless code flow — check the registered account's inbox for the code (any address now works, not just the Resend account owner's, since `notify.m9rcy.dev` is verified).
 3. Create an account/category/transaction, confirm it persists (reload the page).
-4. Confirm CORS is correctly scoped: calling an authenticated endpoint at `https://api.budgetterry.m9rcy.dev` from browser devtools on a _different_ origin should be blocked; from `https://budgetterry.m9rcy.dev` it should work.
+4. Confirm CORS is correctly scoped: calling an authenticated endpoint at `https://api.budget-terry.m9rcy.dev` from browser devtools on a _different_ origin should be blocked; from `https://budget-terry.m9rcy.dev` it should work.
 
 This mirrors how every previous phase in this project was verified — against the real running system, not just passing tests.
