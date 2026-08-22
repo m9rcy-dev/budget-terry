@@ -21,7 +21,7 @@ The repo's `render.yaml` is a [Blueprint](https://render.com/docs/infrastructure
    - `DATABASE_URL` — the Neon connection string from step 1.
    - `AUTH_SECRET` — generate one: `openssl rand -base64 48`. Never reuse the local-dev value from `.env`.
    - `RESEND_API_KEY` — from the Resend dashboard (API Keys).
-   - `MAIL_FROM` — while Resend is still in sandbox mode (step 4), use `onboarding@resend.dev` as the sender, e.g. `Budget Terry <onboarding@resend.dev>`.
+   - `MAIL_FROM` — a verified sender on the `notify.m9rcy.dev` subdomain (step 4), e.g. `Budget Terry <no-reply@notify.m9rcy.dev>`.
    - `WEB_ORIGIN` — you don't have the Vercel URL yet. Put a placeholder (`https://placeholder.vercel.app`) for now; you'll come back and fix this after step 3.
 3. Deploy. First deploy runs `pnpm install`, `prisma generate && nest build` (via the `build` script), then `prisma migrate deploy` (the `preDeployCommand`, applying every migration in `apps/api/prisma/migrations/` to the fresh Neon database) before starting the service.
 4. Once live, verify: `curl https://<your-service>.onrender.com/health` should return `{"status":"ok"}`. If it doesn't, check the Render logs — a 500 here almost always means `DATABASE_URL` is wrong (the health check now pings the database, not just the process — see `docs/architecture/security.md`).
@@ -40,9 +40,9 @@ The repo's `render.yaml` is a [Blueprint](https://render.com/docs/infrastructure
 
 ## 4. Resend (email)
 
-You're on Resend's free sandbox tier (no verified sending domain yet, per this session's scope decision): emails only deliver to the address your Resend account itself is registered with. Login codes for any other email address will silently not arrive (Resend accepts the API call but doesn't deliver) — expected, not a bug.
+`notify.m9rcy.dev` is registered and verified as a sending subdomain in Resend — real users can receive login codes, not just the account owner. Use any address on that subdomain as `MAIL_FROM` (e.g. `no-reply@notify.m9rcy.dev`); Resend doesn't require the mailbox itself to exist, only the domain's DNS records to be verified (SPF/DKIM), which they are.
 
-To send to real users later: verify a domain in the Resend dashboard (DNS records), then change `MAIL_FROM` on Render to `Budget Terry <no-reply@yourdomain.com>` and save (auto-restarts, no redeploy).
+If `notify.m9rcy.dev` is ever re-verified or DNS changes, check the Resend dashboard's Domains page shows it as verified before relying on it — an unverified or newly-changed domain will silently fail to send rather than erroring loudly.
 
 ## 5. EAS (mobile — internal distribution only, no store submission)
 
@@ -64,7 +64,7 @@ The `eas.json` committed in the repo (`apps/mobile/eas.json`) already has the `p
 Once Render + Vercel are both live and `WEB_ORIGIN` points at the real Vercel URL:
 
 1. Open the real Vercel URL, register a new account through the actual UI (not curl).
-2. Log out, log back in via the passwordless code flow — check your own inbox (the one your Resend account is registered with) for the code.
+2. Log out, log back in via the passwordless code flow — check the registered account's inbox for the code (any address now works, not just the Resend account owner's, since `notify.m9rcy.dev` is verified).
 3. Create an account/category/transaction, confirm it persists (reload the page).
 4. Confirm CORS is correctly scoped: opening the API's Render URL directly and calling an authenticated endpoint from browser devtools on a _different_ origin should be blocked; from the deployed Vercel origin it should work.
 

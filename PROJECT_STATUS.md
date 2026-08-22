@@ -275,6 +275,10 @@ Scoped to a single production environment (no separate staging) after signing up
 - **Deliberately not done this round**: actually running any of the runbook — creating the Neon project, connecting Render/Vercel to GitHub, generating a production `AUTH_SECRET`, running `eas login`/`eas init`/`eas build`. All of it requires the user's own credentials and is documented as their next step, not mine.
 - Verified `pnpm quality` passes end to end after the code changes (main.ts, package.json, health controller + its test). `render.yaml`/`vercel.json`/`eas.json` are config for external services with no local equivalent to run — reviewed against each platform's current docs (fetched live, not recalled from training data) rather than executed.
 
+### Phase 14 Addendum — Real Domain, Resend Sandbox Mode Lifted
+
+The user registered `m9rcy.dev` and verified `notify.m9rcy.dev` as a sending subdomain in Resend — Resend's sandbox-mode limitation (email only deliverable to the account owner's own address, noted as an accepted limitation in the Phase 14 entry above) no longer applies. `docs/deployment.md`'s Render setup step and Resend section were updated to use a real `notify.m9rcy.dev` sender (e.g. `no-reply@notify.m9rcy.dev`) instead of the `onboarding@resend.dev` sandbox address, and the smoke-test step no longer assumes login codes only reach the Resend account owner's own inbox.
+
 ## In Progress
 
 - None — the user needs to work through `docs/deployment.md` before there's anything further for me to verify against a real deployed environment.
