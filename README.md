@@ -2,7 +2,7 @@
 
 A personal budgeting platform for Web, iOS, and Android — accounts, transactions, budgets, bills, a calendar, and savings goals, backed by one shared domain model.
 
-The full product and engineering plan lives at [`docs/budget-terry-v2-plan-updated.md`](docs/budget-terry-v2-plan-updated.md). Architectural decisions are recorded as ADRs under [`docs/adr/`](docs/adr/). Current project state lives in [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — read that before resuming work. Agent/developer working conventions live in [`AGENTS.md`](AGENTS.md).
+The full product and engineering plan lives at [`docs/budget-terry-v2-plan-updated.md`](docs/budget-terry-v2-plan-updated.md). Architectural decisions are recorded as ADRs under [`docs/adr/`](docs/adr/). Current project state lives in [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — read that before resuming work. Agent/developer working conventions live in [`AGENTS.md`](AGENTS.md). Deploying to production (Vercel/Render/Neon/Resend/EAS) is covered in [`docs/deployment.md`](docs/deployment.md).
 
 > The original vanilla-JS V1 app now lives in [`legacy/v1/`](legacy/v1/) and continues to deploy to GitHub Pages independently of this rewrite (see `.github/workflows/static.yml`).
 

@@ -1,7 +1,7 @@
 # Project Status
 
-Last Updated: 2026-08-22
-Current Phase: Phase 13 — Security Hardening (complete); two off-roadmap Post-Phase-13 items also complete (navigation redesign, passwordless email login — see below)
+Last Updated: 2026-08-23
+Current Phase: Phase 14 — Deployment (repo-side config complete; actual dashboard setup is the user's next step — see below)
 Current Task: See Next Task below
 
 ## Completed
@@ -260,15 +260,28 @@ The user signed up for [Resend](https://resend.com) instead of MailerLite while 
 - **Still not done**: wiring a real `RESEND_API_KEY` into a deployed environment — no environment is deployed yet, this is Phase 14 scope, same as the MailerLite version of this note was.
 - Verified `pnpm quality` passes end to end after the swap and the lazy-client fix — 362 tests (283 unit + 79 integration; +2 unit for `ResendMailProvider`'s error-handling branch).
 
+### Phase 14 — Deployment (Production, First Pass)
+
+Scoped to a single production environment (no separate staging) after signing up for Vercel, Render, Neon, Resend, and Expo — a deliberate scope decision, not an oversight; see `docs/deployment.md`'s header for the full reasoning. Store submission (Apple/Google) stays deferred per the earlier "personal device only for now" decision.
+
+- **`apps/api/src/main.ts`**: now prefers `process.env.PORT` (Render's injected port) over the existing `API_PORT`, falling back to the same default — local dev is unaffected since `PORT` is never set there.
+- **`apps/api/package.json`**: added `start:prod` (`node dist/main.js`); `build` now runs `prisma generate` before `nest build` — previously the generated Prisma client only existed incidentally because local dev always ran `prisma migrate dev` first (which auto-generates), so a plain production build via `nest build` alone would have shipped without a client at all. Caught by reasoning through the actual production build path, not by a failure.
+- **API health check now pings the database** (`health.controller.ts`, `PrismaService.$queryRaw\`SELECT 1\``), not just the process. Render uses `/health`for both deploy-readiness gating and ongoing liveness restarts; the previous pure-liveness check would have reported "ok" even with a completely broken`DATABASE_URL`.
+- **`render.yaml`** (repo root, new): Blueprint defining the API as a free-tier web service — `buildCommand` builds `@budget-terry/api` and its workspace dependencies via `pnpm --filter`, `preDeployCommand` runs `prisma migrate deploy` (Render's documented primitive for migrations-before-traffic-switch, confirmed via their blueprint spec), `startCommand` runs the new `start:prod` script, `healthCheckPath: /health`. Fixed env vars (`MAIL_PROVIDER=resend`, token TTLs, etc.) are inline; secrets (`DATABASE_URL`, `AUTH_SECRET`, `WEB_ORIGIN`, `RESEND_API_KEY`, `MAIL_FROM`) are `sync: false` — Render prompts for them during Blueprint setup rather than storing them in the repo.
+- **`apps/web/vercel.json`** (new): overrides just the build command to build `@budget-terry/types`/`validation`/`ui`/`api-client` before `next build`, since `apps/web` consumes their compiled `dist` output — the same reason those packages need a manual rebuild in local dev (see `AGENTS.md`). Not explicitly called out in the original plan for this phase but a necessary addition surfaced during research: without it, Vercel's zero-config `next build` alone would fail to resolve the workspace packages.
+- **`apps/mobile/eas.json`** (new): standard Expo build profiles — `development` (dev client), `preview` (internal distribution — the one that matters right now for installing on a personal device without a store account), `production` (scaffolded per Expo's own convention, unused until store submission is actually pursued).
+- **`docs/deployment.md`** (new): the full runbook — Neon → Render → Vercel → Resend → EAS, in dependency order, plus a real-browser smoke-test checklist matching how every previous phase in this project was verified. Every step requires the user's own account credentials; none of it could be executed on their behalf (confirmed via this session's scoping questions — user prefers to run the actual dashboard steps themselves).
+- **Genuine unresolved uncertainty, flagged rather than papered over**: Vercel's exact monorepo build-sandboxing behavior when Root Directory is set to a subdirectory couldn't be fully verified without an actual deploy (their own docs are ambiguous about whether sibling workspace directories stay accessible to a custom build command). `docs/deployment.md` calls this out explicitly with a fallback plan (drop Root Directory, use a root-level `vercel.json` with `outputDirectory` instead) rather than asserting false confidence.
+- **Deliberately not done this round**: actually running any of the runbook — creating the Neon project, connecting Render/Vercel to GitHub, generating a production `AUTH_SECRET`, running `eas login`/`eas init`/`eas build`. All of it requires the user's own credentials and is documented as their next step, not mine.
+- Verified `pnpm quality` passes end to end after the code changes (main.ts, package.json, health controller + its test). `render.yaml`/`vercel.json`/`eas.json` are config for external services with no local equivalent to run — reviewed against each platform's current docs (fetched live, not recalled from training data) rather than executed.
+
 ## In Progress
 
-- None.
+- None — the user needs to work through `docs/deployment.md` before there's anything further for me to verify against a real deployed environment.
 
 ## Next Task
 
-Both off-roadmap items above are complete; Phase 13 itself was already complete before either started. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only — and now also the point to wire a real `RESEND_API_KEY` into whatever environment gets deployed first.
-
-Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end. For `apps/mobile` specifically, `npx expo export --platform ios` / `--platform android` is now a proven, cheap way to catch real bundling issues (like the react-native-screens drift above) that dev-server-only checks miss — worth doing again whenever mobile dependencies change, not just this once.
+Work through `docs/deployment.md` (Neon → Render → Vercel → Resend → EAS). Report back with the real Render/Vercel URLs and any build errors — especially watch the first Vercel build log for the monorepo-resolution uncertainty flagged above. Once both are live, the smoke test at the bottom of that doc (register/login/create-data through the real deployed UI, not curl) is the actual Definition of Done for this phase, consistent with how every prior phase in this project was closed out.
 
 ## Known Issues
 
@@ -400,7 +413,7 @@ pnpm quality                                                       # PASS, exit 
 
 ## Last Quality Gate
 
-PASS (2026-08-22) — `pnpm quality` exit code 0, 362 tests across the workspace (283 unit + 79 integration; +2 unit from the Resend provider swap). Also verified: a real end-to-end passwordless-login round trip through the actual UI and real Mailpit-caught SMTP mail (not mocked), and `apps/mobile` bundling cleanly on both platforms via `expo export` (no simulator/device access in this environment).
+PASS (2026-08-23) — `pnpm quality` exit code 0, 363 tests across the workspace (284 unit + 79 integration; +1 net unit from the health check's DB-ping test). `render.yaml`/`apps/web/vercel.json`/`apps/mobile/eas.json` are config for external services with no local equivalent to run — reviewed against each platform's current docs rather than executed; the actual first deploy is the user's next step (`docs/deployment.md`).
 
 ## Resume Instructions
 

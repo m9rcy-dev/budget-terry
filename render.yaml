@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: budget-terry-api
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter "@budget-terry/api..." run build
+    preDeployCommand: pnpm --filter @budget-terry/api run db:deploy
+    startCommand: pnpm --filter @budget-terry/api run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MAIL_PROVIDER
+        value: resend
+      - key: LOG_LEVEL
+        value: info
+      - key: ACCESS_TOKEN_TTL_SECONDS
+        value: "900"
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
+      - key: LOGIN_CODE_TTL_MINUTES
+        value: "10"
+      # Secrets and per-deployment values — set during Blueprint creation in
+      # the Render dashboard, or afterwards under the service's Environment
+      # tab. See docs/deployment.md for where each one comes from.
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false

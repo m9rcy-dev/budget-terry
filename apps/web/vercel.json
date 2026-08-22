@@ -1,0 +1,3 @@
+{
+  "buildCommand": "pnpm --filter \"@budget-terry/web...\" run build"
+}
