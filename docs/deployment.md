@@ -8,11 +8,18 @@ Follows the hosting decision in [ADR-009](adr/ADR-009-hosting-and-deployment.md)
 
 Every step below requires your own account credentials — none of this can be done on your behalf. Do them in order; several steps depend on values produced by an earlier one.
 
+## 0. Push to GitHub
+
+Render and Vercel both deploy by connecting to a GitHub branch, so the code has to be there first. This repo's `main` branch on GitHub is still the pre-rewrite state; everything in this project lives on the local `feature/v2` branch, never pushed. Since `m9rcy.dev` will host multiple projects and future feature branches will come and go, point Render/Vercel at `main` rather than a feature branch — merge `feature/v2` into `main` (a clean fast-forward, no conflicts possible) and push that.
+
 ## 1. Neon (database)
 
-1. Create a new project. Note the region — pick whichever is closest to Render's region (Oregon, US West, is Render's default free-tier region).
-2. From the project dashboard, copy the connection string for the default branch (`postgresql://...`). This is your `DATABASE_URL` for Render, below.
-3. Do **not** run `pnpm --filter @budget-terry/api run db:seed` against this database — that script creates a known dev login (`dev@budgetterry.local` / `dev-password-please-change`) and is local-dev-only.
+Neon's free tier allows up to 100 projects, each with its own independent storage/compute allowance (not a shared pool) — so each app gets its own Neon **project**, not a shared project with multiple databases inside it.
+
+1. Create a new project named `budget-terry`. Note the region — pick whichever is closest to Render's region (Oregon, US West, is Render's default free-tier region).
+2. Neon creates a default database called `neondb` — rename it (or create a new one and use that instead) to `budget_terry`, matching the local-dev naming convention (`budget_terry_dev` in `docker-compose.yml`) minus the `_dev` suffix.
+3. From the project dashboard, copy the connection string for the default branch (`postgresql://...`), pointed at the `budget_terry` database. This is your `DATABASE_URL` for Render, below.
+4. Do **not** run `pnpm --filter @budget-terry/api run db:seed` against this database — that script creates a known dev login (`dev@budgetterry.local` / `dev-password-please-change`) and is local-dev-only.
 
 ## 2. Render (API)
 
