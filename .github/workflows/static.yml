@@ -36,8 +36,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          # V1 app now lives in legacy/v1 — the monorepo root holds the V2 rewrite.
+          path: "legacy/v1"
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

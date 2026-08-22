@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Plan Section 70: "Use tabular numerals where supported" — financial
+ * figures should align in a column rather than jitter as digits change
+ * width. Applied globally rather than per-component since almost every
+ * screen in this app displays money.
+ */
+.tabular-nums,
+body {
+  font-variant-numeric: tabular-nums;
+}

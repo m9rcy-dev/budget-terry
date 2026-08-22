@@ -1,0 +1,17 @@
+{
+  "name": "@budget-terry/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@budget-terry/types": "workspace:*",
+    "@budget-terry/validation": "workspace:*"
+  }
+}

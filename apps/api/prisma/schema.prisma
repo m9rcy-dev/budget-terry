@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum CurrencyCode {
+  NZD
+  AUD
+  USD
+  EUR
+}
+
+enum AccountType {
+  EVERYDAY
+  SAVINGS
+  CREDIT_CARD
+  CASH
+  OTHER
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+/// Weekly/fortnightly/monthly, anchored to a payday rather than the
+/// calendar month. See ADR-006.
+enum BudgetPeriod {
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+}
+
+enum BillRecurrence {
+  ONE_OFF
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/// Only the real, user-driven payment state is persisted. The
+/// time-relative display statuses from the plan (UPCOMING, DUE_SOON,
+/// DUE_TODAY, OVERDUE) are computed at read time from dueDate vs. "today"
+/// — never stored, since a stored value would go stale without a batch
+/// job to keep re-writing it every day. See ADR-010.
+enum BillPaymentStatus {
+  PENDING
+  PAID
+  SKIPPED
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+// ---------------------------------------------------------------------------
+// User — every table below carries a required userId from day one so
+// multi-user support is additive, not a migration project. See ADR-003.
+// Real authentication (ADR-011) resolves "current user" from a verified
+// JWT, not a hardcoded id.
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  displayName  String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts          Account[]
+  categories        Category[]
+  transactions      Transaction[]
+  budgets           Budget[]
+  bills             Bill[]
+  billOccurrences   BillOccurrence[]
+  savingsGoals      SavingsGoal[]
+  goalContributions GoalContribution[]
+  refreshTokens     RefreshToken[]
+  loginCodes        LoginCode[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// RefreshToken — only the hash is stored, never the token itself. Rotated
+// on every use (a new row is created, the old one is revoked) rather than
+// reused, to limit the damage window if a refresh token ever leaks. See
+// ADR-011.
+// ---------------------------------------------------------------------------
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// LoginCode — passwordless email login. Same "only the hash is stored"
+// principle as RefreshToken. Single-use (consumedAt), short-lived
+// (expiresAt, LOGIN_CODE_TTL_MINUTES), and attempts is a per-code lockout
+// counter (independent of the request-rate-limiting on the endpoints
+// themselves — this defends against a burst of guesses against one
+// already-issued code, not just against repeated requests).
+// ---------------------------------------------------------------------------
+
+model LoginCode {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("login_codes")
+}
+
+// ---------------------------------------------------------------------------
+// Accounts and Categories — archive-only once referenced by a transaction;
+// hard delete permitted only with zero transaction history. See ADR-008.
+// ---------------------------------------------------------------------------
+
+model Account {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @db.Uuid
+  name       String
+  type       AccountType
+  currency   CurrencyCode @default(NZD)
+  isArchived Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  savingsGoals SavingsGoal[]
+  bills        Bill[]
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Category {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  name       String
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions     Transaction[]
+  budgetCategories BudgetCategory[]
+  bills            Bill[]
+
+  @@unique([userId, name])
+  @@map("categories")
+}
+
+// ---------------------------------------------------------------------------
+// Transaction — the single source of truth for all money movement.
+// Bill payments and goal contributions each create a linked Transaction
+// atomically alongside their own status/progress update. See ADR-005.
+// Idempotency-Key replays are enforced via the (userId, idempotencyKey)
+// unique constraint — Postgres treats NULLs as distinct, so rows created
+// without a key never collide. See ADR-007.
+// ---------------------------------------------------------------------------
+
+model Transaction {
+  id               String          @id @default(uuid()) @db.Uuid
+  userId           String          @db.Uuid
+  accountId        String          @db.Uuid
+  categoryId       String?         @db.Uuid
+  type             TransactionType
+  amountMinorUnits Int
+  currency         CurrencyCode
+  /// Date only, never a timestamp — see plan Section 51.
+  transactionDate  DateTime        @db.Date
+  merchant         String?
+  description      String?
+
+  relatedBillOccurrenceId   String? @unique @db.Uuid
+  relatedGoalContributionId String? @unique @db.Uuid
+
+  /// Set only on requests made through the idempotent create endpoints
+  /// (ADR-007). Null for transactions generated internally (bill paid,
+  /// goal contribution) since those are already made idempotent by
+  /// their own status/uniqueness checks, not this key.
+  idempotencyKey String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account                 Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category                Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  relatedBillOccurrence   BillOccurrence?   @relation(fields: [relatedBillOccurrenceId], references: [id], onDelete: Restrict)
+  relatedGoalContribution GoalContribution? @relation(fields: [relatedGoalContributionId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, transactionDate])
+  @@index([userId, categoryId, transactionDate])
+  @@map("transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Budget — period is configurable and anchored to payday, not the
+// calendar month. See ADR-006. A Budget is either an overall cap
+// (totalAmountMinorUnits set, no BudgetCategory rows) or a per-category
+// budget (one or more BudgetCategory rows, totalAmountMinorUnits null) —
+// enforced at the application layer when the Budget API is built (Phase 7),
+// not by a DB constraint.
+// ---------------------------------------------------------------------------
+
+model Budget {
+  id                    String       @id @default(uuid()) @db.Uuid
+  userId                String       @db.Uuid
+  name                  String?
+  period                BudgetPeriod
+  anchorDate            DateTime     @db.Date
+  totalAmountMinorUnits Int?
+  currency              CurrencyCode @default(NZD)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  budgetCategories BudgetCategory[]
+
+  @@index([userId])
+  @@map("budgets")
+}
+
+model BudgetCategory {
+  id               String   @id @default(uuid()) @db.Uuid
+  budgetId         String   @db.Uuid
+  categoryId       String   @db.Uuid
+  amountMinorUnits Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  budget   Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([budgetId, categoryId])
+  @@map("budget_categories")
+}
+
+// ---------------------------------------------------------------------------
+// Bill / BillOccurrence — the recurring definition is separate from each
+// individual due-date instance, so a single payment can differ from the
+// bill's normal amount. See plan Section 19.
+// ---------------------------------------------------------------------------
+
+model Bill {
+  id               String         @id @default(uuid()) @db.Uuid
+  userId           String         @db.Uuid
+  name             String
+  amountMinorUnits Int
+  currency         CurrencyCode   @default(NZD)
+  categoryId       String?        @db.Uuid
+  accountId        String?        @db.Uuid
+  recurrence       BillRecurrence
+  autoPay          Boolean        @default(false)
+  notes            String?
+  isArchived       Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    Category?        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  account     Account?         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  occurrences BillOccurrence[]
+
+  @@index([userId])
+  @@map("bills")
+}
+
+model BillOccurrence {
+  id               String            @id @default(uuid()) @db.Uuid
+  billId           String            @db.Uuid
+  userId           String            @db.Uuid
+  dueDate          DateTime          @db.Date
+  amountMinorUnits Int
+  currency         CurrencyCode      @default(NZD)
+  paymentStatus    BillPaymentStatus @default(PENDING)
+  paidAt           DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  bill        Bill         @relation(fields: [billId], references: [id], onDelete: Restrict)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction?
+
+  @@index([userId, dueDate])
+  @@map("bill_occurrences")
+}
+
+// ---------------------------------------------------------------------------
+// SavingsGoal / GoalContribution — currentAmountMinorUnits is deliberately
+// NOT stored; progress is computed by summing contributions, so it can
+// never drift from the underlying records. See plan Section 55 (avoid
+// premature caching).
+// ---------------------------------------------------------------------------
+
+model SavingsGoal {
+  id                     String       @id @default(uuid()) @db.Uuid
+  userId                 String       @db.Uuid
+  name                   String
+  targetAmountMinorUnits Int
+  currency               CurrencyCode @default(NZD)
+  targetDate             DateTime?    @db.Date
+  accountId              String?      @db.Uuid
+  notes                  String?
+  status                 GoalStatus   @default(ACTIVE)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       Account?           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  contributions GoalContribution[]
+
+  @@index([userId, status])
+  @@map("savings_goals")
+}
+
+model GoalContribution {
+  id               String       @id @default(uuid()) @db.Uuid
+  goalId           String       @db.Uuid
+  userId           String       @db.Uuid
+  amountMinorUnits Int
+  currency         CurrencyCode @default(NZD)
+  contributionDate DateTime     @db.Date
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  goal        SavingsGoal  @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction?
+
+  @@index([userId])
+  @@map("goal_contributions")
+}
