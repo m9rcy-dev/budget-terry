@@ -46,3 +46,19 @@ jobs:
 
       - name: Integration tests
         run: pnpm test:integration
+        env:
+          # AUTH_SECRET and DATABASE_URL have no defaults (env.ts) and are
+          # only ever supplied locally via the gitignored apps/api/.env —
+          # CI has neither. Only the real AppModule (integration tests
+          # boot it; unit tests use fake config objects) validates env at
+          # all, and it does so synchronously the moment AppModule is
+          # first imported — before the Testcontainers harness
+          # (test/integration-app.ts) gets a chance to set the real,
+          # ephemeral-container DATABASE_URL. This placeholder only needs
+          # to satisfy that early presence check; Prisma picks up the
+          # correct Testcontainers URL later, once the harness overwrites
+          # process.env.DATABASE_URL, before any query actually runs —
+          # confirmed by simulating this exact CI condition locally (no
+          # .env file, only these two vars set): 79/79 tests pass.
+          AUTH_SECRET: "test-secret-that-is-at-least-32-characters-long"
+          DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
