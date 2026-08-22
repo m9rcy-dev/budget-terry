@@ -104,7 +104,7 @@ Copy `.env.example` → `.env` at the root and inside `apps/api/`, `apps/web/`, 
 
 `apps/api`'s `WEB_ORIGIN` (default `http://localhost:3000`) controls CORS — the API only accepts browser requests from this origin. If you run the web app on a different port, update `WEB_ORIGIN` to match or the browser will silently block every request to the API.
 
-`apps/api`'s `MAIL_*`/`SMTP_*` vars control where login-code emails go. Locally they default to the Mailpit container from `docker-compose.yml` — no changes needed. In production, point the same `SMTP_*` vars at a real provider's SMTP relay (e.g. MailerLite) rather than switching code — see `src/mail/mail.module.ts` and `docs/architecture/security.md`.
+`apps/api`'s `MAIL_*`/`SMTP_*`/`RESEND_API_KEY` vars control where login-code emails go. Locally they default to the Mailpit container from `docker-compose.yml` — no changes needed. In production, set `MAIL_PROVIDER=resend` and `RESEND_API_KEY` to send via [Resend](https://resend.com)'s HTTP API — see `src/mail/mail.module.ts` and `docs/architecture/security.md`.
 
 ## Database Setup
 

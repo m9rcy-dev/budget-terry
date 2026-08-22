@@ -8,7 +8,7 @@ export interface MailMessage {
 /**
  * The app never talks to an SMTP client, an HTTP email API, or any
  * provider-specific SDK directly — every call goes through this
- * interface. Swapping providers (Mailpit locally, MailerLite in
+ * interface. Swapping providers (Mailpit locally, Resend in
  * production, anything else later) means adding/selecting an
  * implementation in mail.module.ts, never touching a caller.
  */

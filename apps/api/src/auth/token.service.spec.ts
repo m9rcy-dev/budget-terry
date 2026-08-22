@@ -18,6 +18,7 @@ function fakeConfigService(overrides: Partial<Env> = {}): ConfigService<Env, tru
     SMTP_SECURE: false,
     SMTP_USER: "",
     SMTP_PASSWORD: "",
+    RESEND_API_KEY: "",
     MAIL_FROM: "Budget Terry <no-reply@budgetterry.local>",
     LOGIN_CODE_TTL_MINUTES: 10,
     ...overrides,

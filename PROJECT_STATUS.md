@@ -249,13 +249,24 @@ Explicit user request, not a plan-numbered phase: replace password as the primar
 - **Deliberately not done this round**: wiring real MailerLite credentials into an actual deployed environment — no environment is deployed yet (that's Phase 14), and per the swappable design above it should be an env var change when that happens, not new code. Tracked in Known Issues below as something to confirm once Phase 14 actually does it.
 - Verified `pnpm quality` passes end to end — exit code 0, 360 tests total (281 unit + 79 integration; +58 unit / +9 integration over the pre-this-work count). Full real-browser + real-Mailpit round trip described above, plus `apps/mobile` verified via `expo export` on both platforms (1469 modules, zero errors) since no simulator/device is available in this environment. Committed locally on `feature/v2`.
 
+### Post-Phase-13 Addendum — Resend Replaces MailerLite as the Production Mail Provider (Off-Roadmap)
+
+The user signed up for [Resend](https://resend.com) instead of MailerLite while scoping Phase 14's required subscriptions, specifically because MailerLite is a marketing-email platform, not built for transactional mail like a login code — a real distinction Resend (and providers like it, e.g. Postmark, SES) is purpose-built for. This is exactly the scenario the `MailProvider` abstraction above was built for: a provider swap with zero changes to `AuthService`, `MailService`, or any test that doesn't touch the provider layer directly.
+
+- **New `ResendMailProvider`** (`apps/api/src/mail/resend-mail.provider.ts`) implements `MailProvider` via Resend's official `resend` SDK (HTTP API, not SMTP — the vendor's recommended integration, and it sidesteps relying on outbound SMTP ports being open on the host). Selected via `MAIL_PROVIDER=resend`; reads `RESEND_API_KEY` and the existing `MAIL_FROM`. Registered as a second case in `mail.module.ts`'s factory `switch`, alongside `SmtpMailProvider` — the exhaustiveness (`never`) check that already existed caught the missing case at compile time the moment `resend` was added to `env.ts`'s `MAIL_PROVIDER` enum, exactly as designed.
+- `SmtpMailProvider` (Mailpit, local dev) is unchanged and still the default — only the production selection changed.
+- New unit test (`resend-mail.provider.spec.ts`, 2 tests) covers the one piece of real logic beyond a passthrough: Resend's SDK returns `{ data, error }` rather than throwing, so the provider must itself throw on a non-null `error` for `MailService`'s caller-side error handling to work at all.
+- **Found and fixed a real bug via the integration suite, not by inspection**: the Resend SDK's constructor throws immediately (`Missing API key`) when given an empty string. `ResendMailProvider` is registered in `MailModule` unconditionally — Nest eagerly instantiates every registered provider regardless of which one the `MAIL_PROVIDER` factory actually selects — so with the (default, dev/test-standard) `RESEND_API_KEY=""`, the whole app failed to boot even while `MAIL_PROVIDER=smtp` was selected. Every rate-limit integration test failed with this error the first time the gate ran. Fixed by making the `Resend` client construction lazy (built on first `send()` call, not in the constructor) — it now only ever throws if the Resend provider is actually used without a key configured, not merely because it's registered.
+- **Still not done**: wiring a real `RESEND_API_KEY` into a deployed environment — no environment is deployed yet, this is Phase 14 scope, same as the MailerLite version of this note was.
+- Verified `pnpm quality` passes end to end after the swap and the lazy-client fix — 362 tests (283 unit + 79 integration; +2 unit for `ResendMailProvider`'s error-handling branch).
+
 ## In Progress
 
 - None.
 
 ## Next Task
 
-Both off-roadmap items above are complete; Phase 13 itself was already complete before either started. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only — and now also the point to wire real MailerLite credentials into whatever environment gets deployed first.
+Both off-roadmap items above are complete; Phase 13 itself was already complete before either started. Re-read plan Section 60 for Phase 14 — Deployment: development/staging/production environments, database backups (the strategy is now documented, this would be about actually provisioning it), migration deployment strategy, API health checks, web deployment, mobile build pipeline, Apple App Store / Google Play setup, release documentation. This is the phase that actually stands up the ADR-009 hosting choices (Vercel/Render/Neon) for real, rather than local dev only — and now also the point to wire a real `RESEND_API_KEY` into whatever environment gets deployed first.
 
 Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the end. For `apps/mobile` specifically, `npx expo export --platform ios` / `--platform android` is now a proven, cheap way to catch real bundling issues (like the react-native-screens drift above) that dev-server-only checks miss — worth doing again whenever mobile dependencies change, not just this once.
 
@@ -286,7 +297,7 @@ Continue the habit: boot `apps/api` (and `apps/web`) mid-phase, not just at the 
 - `design/spendee-inspired-theme` branch exists (forked from `feature/v2` after Phase 13) with a written plan and mockups for a vivid alternative theme — explicitly not pursued (user preferred the current warm palette), left unmerged in case it's revisited. Not a blocker, just an unmerged branch to be aware of.
 - No dedicated component tests for the new `AppShell`/`Sidebar`/`DrawerContent` (web) or Drawer setup (mobile) — see Post-Phase-13 above. Verified via real bundling/build and manual interaction testing instead, consistent with `Screen.tsx` never having had its own tests either.
 - `apps/mobile`'s `@react-navigation/drawer`/`@react-navigation/native` versions have a one-patch-version peer mismatch (`7.13.9`/`7.9.2` wants `native@^7.3.17`, found `7.3.16`, pulled in transitively via `expo-router`) — cosmetic `pnpm install` warning only, both `expo export` platforms bundle and run cleanly regardless. Revisit only if `expo-router` itself bumps its `@react-navigation/native` pin.
-- No real MailerLite (or other) production email credentials exist anywhere yet — `SmtpMailProvider` is built and proven against Mailpit locally, but nothing is deployed for it to point at yet. Phase 14 (Deployment) scope; see Post-Phase-13 above.
+- No real `RESEND_API_KEY` exists in any deployed environment yet — `ResendMailProvider` is built and unit-tested, but nothing is deployed for it to point at yet. Phase 14 (Deployment) scope; see the Post-Phase-13 Addendum above.
 - Login-code emails have no styling beyond a plain inline `<p>`/font-size `html` body (`MailService.sendLoginCode`) — functional, not polished; revisit if email presentation ever matters beyond "the code is readable."
 - No "resend code" cooldown/backoff in the UI — the Resend link just calls the request endpoint again immediately, relying entirely on the server-side 10/min rate limit rather than disabling the button client-side for a few seconds. Minor UX polish, not a security gap (the server-side limit is what actually matters).
 
@@ -389,7 +400,7 @@ pnpm quality                                                       # PASS, exit 
 
 ## Last Quality Gate
 
-PASS (2026-08-22) — `pnpm quality` exit code 0, 360 tests across the workspace (281 unit + 79 integration). Also verified: a real end-to-end passwordless-login round trip through the actual UI and real Mailpit-caught SMTP mail (not mocked), and `apps/mobile` bundling cleanly on both platforms via `expo export` (no simulator/device access in this environment).
+PASS (2026-08-22) — `pnpm quality` exit code 0, 362 tests across the workspace (283 unit + 79 integration; +2 unit from the Resend provider swap). Also verified: a real end-to-end passwordless-login round trip through the actual UI and real Mailpit-caught SMTP mail (not mocked), and `apps/mobile` bundling cleanly on both platforms via `expo export` (no simulator/device access in this environment).
 
 ## Resume Instructions
 

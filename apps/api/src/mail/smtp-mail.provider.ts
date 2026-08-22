@@ -5,14 +5,12 @@ import type { Env } from "../config/env";
 import type { MailMessage, MailProvider } from "./mail-provider.interface";
 
 /**
- * Plain SMTP — deliberately the only provider implemented so far,
- * because it already covers both environments this project actually
- * needs: Mailpit locally (docker-compose, no auth) and MailerLite's SMTP
- * relay in production (ADR pending — see docs/architecture/security.md).
- * Switching provider is an env var change (SMTP_HOST/PORT/USER/PASSWORD),
- * not a code change. A future provider that only offers an HTTP API
- * (not SMTP) would get its own MailProvider implementation alongside
- * this one, selected in mail.module.ts.
+ * Plain SMTP — used locally against Mailpit (docker-compose, no auth).
+ * Production uses ResendMailProvider instead (Resend's HTTP API), since
+ * Resend is the selected production provider — see mail.module.ts and
+ * docs/architecture/security.md. Kept as a separate implementation
+ * rather than removed: any future SMTP-only provider (or a self-hosted
+ * relay) can reuse this without writing a new one.
  */
 @Injectable()
 export class SmtpMailProvider implements MailProvider {

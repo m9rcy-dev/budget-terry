@@ -11,14 +11,16 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   /** Selects the MailProvider implementation — see src/mail/mail.module.ts. */
-  MAIL_PROVIDER: z.enum(["smtp"]).default("smtp"),
-  /** SMTP transport config — Mailpit locally (no auth), a real relay (e.g.
-   * MailerLite) in production. Same SmtpMailProvider either way. */
+  MAIL_PROVIDER: z.enum(["smtp", "resend"]).default("smtp"),
+  /** SMTP transport config — Mailpit locally (no auth). Only read when
+   * MAIL_PROVIDER=smtp. */
   SMTP_HOST: z.string().min(1).default("localhost"),
   SMTP_PORT: z.coerce.number().int().positive().default(1025),
   SMTP_SECURE: z.coerce.boolean().default(false),
   SMTP_USER: z.string().default(""),
   SMTP_PASSWORD: z.string().default(""),
+  /** Resend's HTTP API key. Only read when MAIL_PROVIDER=resend (production). */
+  RESEND_API_KEY: z.string().default(""),
   MAIL_FROM: z.string().min(1).default("Budget Terry <no-reply@budgetterry.local>"),
   /** Login-code emails expire after this many minutes (plan: 6-digit
    * passwordless login). */
