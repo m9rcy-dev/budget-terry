@@ -71,14 +71,14 @@ These were decided during planning and apply across every phase. Full rationale 
 
 ## 6. Quality Gate
 
-Not yet wired up — repo bootstrap (Phase 1) hasn't happened. Once it exists, the target is:
-
 ```bash
 pnpm quality
-# = format:check && lint && typecheck && test && test:integration && build
+# = build && format:check && lint && typecheck && test && test:integration
 ```
 
-Until `pnpm quality` exists, changes are still expected to pass whatever formatter/linter/typecheck/tests already exist at that point — never skip checks because the full gate isn't wired up yet.
+`build` runs first because several workspace packages (`@budget-terry/types`, `@budget-terry/validation`) are consumed via their compiled `dist` output, not raw source — `typecheck`/`test` fail to resolve them on a fresh checkout otherwise (caught via a real CI failure, not by inspection).
+
+This must pass before any task is considered done — never skip checks because a step seems redundant or slow.
 
 ---
 

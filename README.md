@@ -144,7 +144,7 @@ pnpm typecheck
 
 ```bash
 pnpm quality
-# = format:check && lint && typecheck && test && test:integration && build
+# = build && format:check && lint && typecheck && test && test:integration
 ```
 
 This must pass before any task is considered done — see `AGENTS.md` §7 (Definition of Done).

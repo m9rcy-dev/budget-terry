@@ -25,6 +25,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Runs before the checks below: @budget-terry/types and
+      # @budget-terry/validation are consumed via their compiled dist
+      # output, not raw source, so a fresh checkout can't typecheck or
+      # test anything that imports them until this has run once.
+      - name: Build
+        run: pnpm build
+
       - name: Formatting check
         run: pnpm format:check
 
@@ -39,6 +46,3 @@ jobs:
 
       - name: Integration tests
         run: pnpm test:integration
-
-      - name: Build
-        run: pnpm build
