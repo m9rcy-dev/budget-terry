@@ -279,6 +279,10 @@ Scoped to a single production environment (no separate staging) after signing up
 
 The user registered `m9rcy.dev` and verified `notify.m9rcy.dev` as a sending subdomain in Resend — Resend's sandbox-mode limitation (email only deliverable to the account owner's own address, noted as an accepted limitation in the Phase 14 entry above) no longer applies. `docs/deployment.md`'s Render setup step and Resend section were updated to use a real `notify.m9rcy.dev` sender (e.g. `no-reply@notify.m9rcy.dev`) instead of the `onboarding@resend.dev` sandbox address, and the smoke-test step no longer assumes login codes only reach the Resend account owner's own inbox.
 
+### Phase 14 Addendum — Custom Domains
+
+`m9rcy.dev` will host multiple projects, not just this one, so budget-terry gets its own subdomain rather than the root domain: **`budgetterry.m9rcy.dev`** (web) and **`api.budgetterry.m9rcy.dev`** (API, nested under the project subdomain so a future project's API doesn't need a different naming convention — it just becomes `foo.m9rcy.dev` + `api.foo.m9rcy.dev`). `render.yaml` now declares `domains: [api.budgetterry.m9rcy.dev]` directly (Render's Blueprint spec supports this natively — confirmed via their docs — rather than leaving it as a dashboard-only step). Vercel custom domains aren't part of `vercel.json`'s supported config, so attaching `budgetterry.m9rcy.dev` there stays a one-time dashboard step, documented in `docs/deployment.md`. `docs/deployment.md` was reordered slightly as a result: `WEB_ORIGIN` is now set to its final value (`https://budgetterry.m9rcy.dev`) during the Render setup step itself, rather than as a "come back and fix this later" step — since both domains were decided upfront, there's no more chicken-and-egg ordering problem between Render and Vercel.
+
 ## In Progress
 
 - None — the user needs to work through `docs/deployment.md` before there's anything further for me to verify against a real deployed environment.

@@ -7,6 +7,8 @@ services:
     preDeployCommand: pnpm --filter @budget-terry/api run db:deploy
     startCommand: pnpm --filter @budget-terry/api run start:prod
     healthCheckPath: /health
+    domains:
+      - api.budgetterry.m9rcy.dev
     envVars:
       - key: NODE_VERSION
         value: "22"
