@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "jest"
+    "test": "jest",
+    "eas-build-post-install": "pnpm --filter \"@budget-terry/mobile^...\" run build"
   },
   "dependencies": {
     "@budget-terry/api-client": "workspace:*",
