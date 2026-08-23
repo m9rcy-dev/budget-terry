@@ -46,6 +46,12 @@ export default function GoalsPage() {
   const [contributionAmounts, setContributionAmounts] = useState<Record<string, string>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
+  // Set when a goal with no default account is contributed to — the goal
+  // whose contribute row should show an inline "which account?" picker
+  // instead of contributing immediately (see onContributeClick).
+  const [contributingGoalId, setContributingGoalId] = useState<string | null>(null);
+  const [contributeAccountId, setContributeAccountId] = useState("");
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login");
@@ -86,20 +92,43 @@ export default function GoalsPage() {
     }
   };
 
-  const onContribute = async (goalId: string): Promise<void> => {
+  // Goals without a default account need one chosen at contribute-time —
+  // the API accepts accountId on the contribute call for exactly this
+  // (see createGoalContributionSchema). Goals that already have one
+  // contribute in a single click, unchanged.
+  const onContributeClick = (goal: SavingsGoal): void => {
+    if (goal.accountId) {
+      void onContribute(goal.id, goal.accountId);
+    } else {
+      setErrorMessage(null);
+      setContributeAccountId("");
+      setContributingGoalId(goal.id);
+    }
+  };
+
+  const onContribute = async (goalId: string, accountId: string): Promise<void> => {
     setErrorMessage(null);
     setPendingKey(`contribute:${goalId}`);
     try {
       await addGoalContribution(apiClient, goalId, {
         amountMinorUnits: dollarsToMinorUnits(contributionAmounts[goalId] ?? "0"),
+        accountId,
       });
       setContributionAmounts((current) => ({ ...current, [goalId]: "" }));
+      setContributingGoalId(null);
       await refresh();
     } catch {
-      setErrorMessage("Could not add the contribution — does this goal have an account?");
+      setErrorMessage("Could not add the contribution. Please try again.");
     } finally {
       setPendingKey(null);
     }
+  };
+
+  const onConfirmContribute = (): void => {
+    if (!contributingGoalId || !contributeAccountId) {
+      return;
+    }
+    void onContribute(contributingGoalId, contributeAccountId);
   };
 
   const onComplete = async (goalId: string): Promise<void> => {
@@ -260,7 +289,7 @@ export default function GoalsPage() {
                 </div>
 
                 {goal.status === "ACTIVE" && (
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Input
                       aria-label={`Contribute to ${goal.name}`}
                       type="number"
@@ -275,14 +304,46 @@ export default function GoalsPage() {
                       }
                       className="w-32 text-sm"
                     />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => onContribute(goal.id)}
-                      disabled={pendingKey === `contribute:${goal.id}`}
-                    >
-                      {pendingKey === `contribute:${goal.id}` ? "Adding…" : "Add contribution"}
-                    </Button>
+                    {contributingGoalId === goal.id ? (
+                      <>
+                        <Select
+                          aria-label="Account to contribute from"
+                          value={contributeAccountId}
+                          onChange={(event) => setContributeAccountId(event.target.value)}
+                        >
+                          <option value="">From…</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={onConfirmContribute}
+                          disabled={!contributeAccountId || pendingKey === `contribute:${goal.id}`}
+                        >
+                          {pendingKey === `contribute:${goal.id}` ? "Adding…" : "Confirm"}
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => setContributingGoalId(null)}
+                          className="text-sm text-text-secondary underline underline-offset-2"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => onContributeClick(goal)}
+                        disabled={pendingKey === `contribute:${goal.id}`}
+                      >
+                        {pendingKey === `contribute:${goal.id}` ? "Adding…" : "Add contribution"}
+                      </Button>
+                    )}
                   </div>
                 )}
 

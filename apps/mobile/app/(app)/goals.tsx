@@ -42,6 +42,12 @@ export default function GoalsScreen() {
   const [contributionAmounts, setContributionAmounts] = useState<Record<string, string>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
+  // Set when a goal with no default account is contributed to — the goal
+  // whose contribute row should show an inline "which account?" picker
+  // instead of contributing immediately (see onContributePress).
+  const [contributingGoalId, setContributingGoalId] = useState<string | null>(null);
+  const [contributeAccountId, setContributeAccountId] = useState<string | undefined>(undefined);
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace("/login");
@@ -77,20 +83,43 @@ export default function GoalsScreen() {
     }
   };
 
-  const onContribute = async (goalId: string): Promise<void> => {
+  // Goals without a default account need one chosen at contribute-time —
+  // the API accepts accountId on the contribute call for exactly this
+  // (see createGoalContributionSchema). Goals that already have one
+  // contribute in a single tap, unchanged.
+  const onContributePress = (goal: SavingsGoal): void => {
+    if (goal.accountId) {
+      void onContribute(goal.id, goal.accountId);
+    } else {
+      setErrorMessage(null);
+      setContributeAccountId(undefined);
+      setContributingGoalId(goal.id);
+    }
+  };
+
+  const onContribute = async (goalId: string, accountId: string): Promise<void> => {
     setErrorMessage(null);
     setPendingKey(`contribute:${goalId}`);
     try {
       await addGoalContribution(apiClient, goalId, {
         amountMinorUnits: dollarsToMinorUnits(contributionAmounts[goalId] ?? "0"),
+        accountId,
       });
       setContributionAmounts((current) => ({ ...current, [goalId]: "" }));
+      setContributingGoalId(null);
       await refresh();
     } catch {
-      setErrorMessage("Could not add the contribution — does this goal have an account?");
+      setErrorMessage("Could not add the contribution. Please try again.");
     } finally {
       setPendingKey(null);
     }
+  };
+
+  const onConfirmContribute = (): void => {
+    if (!contributingGoalId || !contributeAccountId) {
+      return;
+    }
+    void onContribute(contributingGoalId, contributeAccountId);
   };
 
   const onComplete = async (goalId: string): Promise<void> => {
@@ -216,14 +245,56 @@ export default function GoalsScreen() {
                       }
                       style={styles.contributeInput}
                     />
-                    <Pressable
-                      onPress={() => onContribute(item.id)}
-                      disabled={pendingKey === `contribute:${item.id}`}
-                    >
-                      <Text style={styles.link}>
-                        {pendingKey === `contribute:${item.id}` ? "Adding…" : "Add"}
-                      </Text>
-                    </Pressable>
+                    {contributingGoalId !== item.id && (
+                      <Pressable
+                        onPress={() => onContributePress(item)}
+                        disabled={pendingKey === `contribute:${item.id}`}
+                      >
+                        <Text style={styles.link}>
+                          {pendingKey === `contribute:${item.id}` ? "Adding…" : "Add"}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+
+                {contributingGoalId === item.id && (
+                  <View style={styles.payPicker}>
+                    <View style={styles.row}>
+                      {accounts.map((account) => (
+                        <Pressable
+                          key={account.id}
+                          onPress={() => setContributeAccountId(account.id)}
+                          style={[
+                            styles.chip,
+                            contributeAccountId === account.id && styles.chipSelected,
+                          ]}
+                        >
+                          <Text
+                            style={
+                              contributeAccountId === account.id
+                                ? styles.chipTextSelected
+                                : styles.chipText
+                            }
+                          >
+                            {account.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={styles.goalActions}>
+                      <Pressable
+                        onPress={onConfirmContribute}
+                        disabled={!contributeAccountId || pendingKey === `contribute:${item.id}`}
+                      >
+                        <Text style={styles.link}>
+                          {pendingKey === `contribute:${item.id}` ? "Adding…" : "Confirm"}
+                        </Text>
+                      </Pressable>
+                      <Pressable onPress={() => setContributingGoalId(null)}>
+                        <Text style={styles.linkMuted}>Cancel</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 )}
               </View>
@@ -256,6 +327,7 @@ const styles = StyleSheet.create({
   goalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   goalName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
   goalActions: { flexDirection: "row", gap: spacing.sm + 4 },
+  payPicker: { gap: spacing.xs + 2, marginTop: spacing.xs },
   barTrack: { height: 8, borderRadius: 4, backgroundColor: colors.background },
   barFill: { height: 8, borderRadius: 4, backgroundColor: colors.accentPrimary },
   amountText: { fontSize: 12, color: colors.textSecondary },
