@@ -42,6 +42,7 @@ export interface BillOccurrenceForCalendar {
   occurrenceId: string;
   billId: string;
   billName: string;
+  billAccountId: string | null;
   dueDate: Date;
   amountMinorUnits: number;
   currency: BillOccurrence["currency"];
@@ -301,7 +302,7 @@ export class BillsService {
   ): Promise<BillOccurrenceForCalendar[]> {
     const occurrences = await this.prisma.billOccurrence.findMany({
       where: { userId, dueDate: { gte: from, lte: to } },
-      include: { bill: { select: { name: true } } },
+      include: { bill: { select: { name: true, accountId: true } } },
       orderBy: { dueDate: "asc" },
     });
 
@@ -310,6 +311,7 @@ export class BillsService {
       occurrenceId: occurrence.id,
       billId: occurrence.billId,
       billName: occurrence.bill.name,
+      billAccountId: occurrence.bill.accountId,
       dueDate: occurrence.dueDate,
       amountMinorUnits: occurrence.amountMinorUnits,
       currency: occurrence.currency,

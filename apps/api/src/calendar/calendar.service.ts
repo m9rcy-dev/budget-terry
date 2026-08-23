@@ -36,6 +36,7 @@ export class CalendarService {
       billId: occurrence.billId,
       occurrenceId: occurrence.occurrenceId,
       name: occurrence.billName,
+      accountId: occurrence.billAccountId,
       amountMinorUnits: occurrence.amountMinorUnits,
       currency: occurrence.currency,
       displayStatus: occurrence.displayStatus,

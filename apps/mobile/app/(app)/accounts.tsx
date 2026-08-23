@@ -29,6 +29,7 @@ export default function AccountsScreen() {
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("EVERYDAY");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -61,12 +62,20 @@ export default function AccountsScreen() {
   };
 
   const onArchiveToggle = async (account: Account): Promise<void> => {
-    if (account.isArchived) {
-      await restoreAccount(apiClient, account.id);
-    } else {
-      await archiveAccount(apiClient, account.id);
+    setErrorMessage(null);
+    setPendingKey(`archive:${account.id}`);
+    try {
+      if (account.isArchived) {
+        await restoreAccount(apiClient, account.id);
+      } else {
+        await archiveAccount(apiClient, account.id);
+      }
+      await refresh();
+    } catch {
+      setErrorMessage("Could not update this account. Please try again.");
+    } finally {
+      setPendingKey(null);
     }
-    await refresh();
   };
 
   if (isLoading || !user) {
@@ -118,8 +127,17 @@ export default function AccountsScreen() {
               <Text style={styles.rowText}>
                 {item.name} ({item.type}){item.isArchived ? " — Archived" : ""}
               </Text>
-              <Pressable onPress={() => onArchiveToggle(item)}>
-                <Text style={styles.link}>{item.isArchived ? "Restore" : "Archive"}</Text>
+              <Pressable
+                onPress={() => onArchiveToggle(item)}
+                disabled={pendingKey === `archive:${item.id}`}
+              >
+                <Text style={styles.link}>
+                  {pendingKey === `archive:${item.id}`
+                    ? "Working…"
+                    : item.isArchived
+                      ? "Restore"
+                      : "Archive"}
+                </Text>
               </Pressable>
             </View>
           )}

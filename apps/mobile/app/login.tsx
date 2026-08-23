@@ -59,7 +59,7 @@ export default function LoginScreen() {
       setErrorMessage(
         error instanceof ApiError
           ? "Could not send a code right now. Try again shortly."
-          : "Could not reach the server. Is the API running?",
+          : "The server may be waking up after being idle — please try again in a few seconds.",
       );
     }
   };
@@ -73,7 +73,7 @@ export default function LoginScreen() {
       setErrorMessage(
         error instanceof ApiError
           ? "That code is invalid or has expired."
-          : "Could not reach the server. Is the API running?",
+          : "The server may be waking up after being idle — please try again in a few seconds.",
       );
     }
   };
@@ -85,7 +85,9 @@ export default function LoginScreen() {
       await requestLoginCode(codeEmail);
       setInfoMessage("Sent a new code.");
     } catch {
-      setErrorMessage("Could not reach the server. Is the API running?");
+      setErrorMessage(
+        "The server may be waking up after being idle — please try again in a few seconds.",
+      );
     }
   };
 

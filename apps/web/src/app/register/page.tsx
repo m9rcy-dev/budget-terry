@@ -31,7 +31,7 @@ export default function RegisterPage() {
       setErrorMessage(
         error instanceof ApiError
           ? "Could not create an account with those details."
-          : "Could not reach the server. Is the API running?",
+          : "The server may be waking up after being idle — please try again in a few seconds.",
       );
     }
   };

@@ -117,7 +117,9 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
 
     expect(
-      await screen.findByText("Could not reach the server. Is the API running?"),
+      await screen.findByText(
+        "The server may be waking up after being idle — please try again in a few seconds.",
+      ),
     ).toBeInTheDocument();
   });
 });

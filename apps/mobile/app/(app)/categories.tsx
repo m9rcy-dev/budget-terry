@@ -26,6 +26,7 @@ export default function CategoriesScreen() {
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -58,12 +59,20 @@ export default function CategoriesScreen() {
   };
 
   const onArchiveToggle = async (category: Category): Promise<void> => {
-    if (category.isArchived) {
-      await restoreCategory(apiClient, category.id);
-    } else {
-      await archiveCategory(apiClient, category.id);
+    setErrorMessage(null);
+    setPendingKey(`archive:${category.id}`);
+    try {
+      if (category.isArchived) {
+        await restoreCategory(apiClient, category.id);
+      } else {
+        await archiveCategory(apiClient, category.id);
+      }
+      await refresh();
+    } catch {
+      setErrorMessage("Could not update this category. Please try again.");
+    } finally {
+      setPendingKey(null);
     }
-    await refresh();
   };
 
   if (isLoading || !user) {
@@ -101,8 +110,17 @@ export default function CategoriesScreen() {
                 {item.name}
                 {item.isArchived ? " — Archived" : ""}
               </Text>
-              <Pressable onPress={() => onArchiveToggle(item)}>
-                <Text style={styles.link}>{item.isArchived ? "Restore" : "Archive"}</Text>
+              <Pressable
+                onPress={() => onArchiveToggle(item)}
+                disabled={pendingKey === `archive:${item.id}`}
+              >
+                <Text style={styles.link}>
+                  {pendingKey === `archive:${item.id}`
+                    ? "Working…"
+                    : item.isArchived
+                      ? "Restore"
+                      : "Archive"}
+                </Text>
               </Pressable>
             </View>
           )}

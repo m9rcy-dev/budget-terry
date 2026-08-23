@@ -44,6 +44,7 @@ export default function GoalsPage() {
   const [accountId, setAccountId] = useState("");
 
   const [contributionAmounts, setContributionAmounts] = useState<Record<string, string>>({});
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -87,6 +88,7 @@ export default function GoalsPage() {
 
   const onContribute = async (goalId: string): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey(`contribute:${goalId}`);
     try {
       await addGoalContribution(apiClient, goalId, {
         amountMinorUnits: dollarsToMinorUnits(contributionAmounts[goalId] ?? "0"),
@@ -95,21 +97,39 @@ export default function GoalsPage() {
       await refresh();
     } catch {
       setErrorMessage("Could not add the contribution — does this goal have an account?");
+    } finally {
+      setPendingKey(null);
     }
   };
 
   const onComplete = async (goalId: string): Promise<void> => {
-    await completeGoal(apiClient, goalId);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`complete:${goalId}`);
+    try {
+      await completeGoal(apiClient, goalId);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not complete this goal. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   const onArchiveToggle = async (goal: SavingsGoal): Promise<void> => {
-    if (goal.status === "ARCHIVED") {
-      await restoreGoal(apiClient, goal.id);
-    } else {
-      await archiveGoal(apiClient, goal.id);
+    setErrorMessage(null);
+    setPendingKey(`archive:${goal.id}`);
+    try {
+      if (goal.status === "ARCHIVED") {
+        await restoreGoal(apiClient, goal.id);
+      } else {
+        await archiveGoal(apiClient, goal.id);
+      }
+      await refresh();
+    } catch {
+      setErrorMessage("Could not update this goal. Please try again.");
+    } finally {
+      setPendingKey(null);
     }
-    await refresh();
   };
 
   if (isLoading || !user) {
@@ -197,17 +217,23 @@ export default function GoalsPage() {
                       <button
                         type="button"
                         onClick={() => onComplete(goal.id)}
-                        className="text-accent-primary underline underline-offset-2"
+                        disabled={pendingKey === `complete:${goal.id}`}
+                        className="text-accent-primary underline underline-offset-2 disabled:opacity-50"
                       >
-                        Complete
+                        {pendingKey === `complete:${goal.id}` ? "Completing…" : "Complete"}
                       </button>
                     )}
                     <button
                       type="button"
                       onClick={() => onArchiveToggle(goal)}
-                      className="text-text-secondary underline underline-offset-2"
+                      disabled={pendingKey === `archive:${goal.id}`}
+                      className="text-text-secondary underline underline-offset-2 disabled:opacity-50"
                     >
-                      {goal.status === "ARCHIVED" ? "Restore" : "Archive"}
+                      {pendingKey === `archive:${goal.id}`
+                        ? "Working…"
+                        : goal.status === "ARCHIVED"
+                          ? "Restore"
+                          : "Archive"}
                     </button>
                   </div>
                 </div>
@@ -249,8 +275,13 @@ export default function GoalsPage() {
                       }
                       className="w-32 text-sm"
                     />
-                    <Button type="button" variant="secondary" onClick={() => onContribute(goal.id)}>
-                      Add contribution
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => onContribute(goal.id)}
+                      disabled={pendingKey === `contribute:${goal.id}`}
+                    >
+                      {pendingKey === `contribute:${goal.id}` ? "Adding…" : "Add contribution"}
                     </Button>
                   </div>
                 )}

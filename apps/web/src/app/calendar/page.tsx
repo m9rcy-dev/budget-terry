@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CalendarEntry } from "@budget-terry/types";
+import type { Account, CalendarEntry } from "@budget-terry/types";
 import {
   getCalendarEntries,
+  listAccounts,
   payBillOccurrence,
   skipBillOccurrence,
 } from "@budget-terry/api-client";
@@ -12,6 +13,7 @@ import { colors } from "@budget-terry/ui";
 import { AppShell } from "../../components/AppShell";
 import { Button } from "../../components/Button";
 import { ErrorState } from "../../components/ErrorState";
+import { Select } from "../../components/Field";
 import { LoadingState } from "../../components/LoadingState";
 import { StatusDot } from "../../components/StatusDot";
 import { apiClient } from "../../lib/api-client";
@@ -74,13 +76,31 @@ export default function CalendarPage() {
   const router = useRouter();
   const [viewDate, setViewDate] = useState(() => new Date());
   const [entries, setEntries] = useState<CalendarEntry[] | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Set when a bill with no default account is paid — the entry whose row
+  // should show an inline "which account?" picker instead of paying
+  // immediately (see onPayClick).
+  const [payingOccurrence, setPayingOccurrence] = useState<{
+    billId: string;
+    occurrenceId: string;
+  } | null>(null);
+  const [payAccountId, setPayAccountId] = useState("");
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login");
     }
   }, [isLoading, user, router]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    listAccounts(apiClient).then(setAccounts);
+  }, [user]);
 
   const monthGrid = useMemo(
     () => buildMonthGrid(viewDate.getUTCFullYear(), viewDate.getUTCMonth()),
@@ -111,19 +131,56 @@ export default function CalendarPage() {
     return map;
   }, [entries]);
 
-  const onPay = async (billId: string, occurrenceId: string): Promise<void> => {
-    setErrorMessage(null);
-    try {
-      await payBillOccurrence(apiClient, billId, occurrenceId);
-      await refresh();
-    } catch {
-      setErrorMessage("Could not mark this occurrence paid — does the bill have an account?");
+  // Bills without a default account need one chosen at pay-time — the API
+  // accepts accountId on the pay call for exactly this (see
+  // markBillOccurrencePaidSchema). Bills that already have one pay in a
+  // single click, unchanged.
+  const onPayClick = (
+    entryAccountId: string | null,
+    billId: string,
+    occurrenceId: string,
+  ): void => {
+    if (entryAccountId) {
+      void onPay(billId, occurrenceId, entryAccountId);
+    } else {
+      setErrorMessage(null);
+      setPayAccountId("");
+      setPayingOccurrence({ billId, occurrenceId });
     }
   };
 
+  const onPay = async (billId: string, occurrenceId: string, accountId: string): Promise<void> => {
+    setErrorMessage(null);
+    setPendingKey(`pay:${occurrenceId}`);
+    try {
+      await payBillOccurrence(apiClient, billId, occurrenceId, { accountId });
+      setPayingOccurrence(null);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not mark this occurrence as paid. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  const onConfirmPay = (): void => {
+    if (!payingOccurrence || !payAccountId) {
+      return;
+    }
+    void onPay(payingOccurrence.billId, payingOccurrence.occurrenceId, payAccountId);
+  };
+
   const onSkip = async (billId: string, occurrenceId: string): Promise<void> => {
-    await skipBillOccurrence(apiClient, billId, occurrenceId);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`skip:${occurrenceId}`);
+    try {
+      await skipBillOccurrence(apiClient, billId, occurrenceId);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not skip this occurrence. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   if (isLoading || !user) {
@@ -246,24 +303,65 @@ export default function CalendarPage() {
                               ${minorUnitsToDollars(entry.amountMinorUnits)}
                             </span>
                             {entry.displayStatus !== "PAID" &&
-                              entry.displayStatus !== "SKIPPED" && (
+                              entry.displayStatus !== "SKIPPED" &&
+                              (payingOccurrence?.occurrenceId === entry.occurrenceId ? (
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    aria-label="Account to pay from"
+                                    value={payAccountId}
+                                    onChange={(event) => setPayAccountId(event.target.value)}
+                                  >
+                                    <option value="">Pay from…</option>
+                                    {accounts.map((account) => (
+                                      <option key={account.id} value={account.id}>
+                                        {account.name}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                  <button
+                                    type="button"
+                                    onClick={onConfirmPay}
+                                    disabled={
+                                      !payAccountId || pendingKey === `pay:${entry.occurrenceId}`
+                                    }
+                                    className="text-accent-primary underline underline-offset-2 disabled:opacity-50"
+                                  >
+                                    {pendingKey === `pay:${entry.occurrenceId}`
+                                      ? "Paying…"
+                                      : "Confirm"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPayingOccurrence(null)}
+                                    className="text-text-secondary underline underline-offset-2"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
                                 <div className="flex gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => onPay(entry.billId, entry.occurrenceId)}
-                                    className="text-accent-primary underline underline-offset-2"
+                                    onClick={() =>
+                                      onPayClick(entry.accountId, entry.billId, entry.occurrenceId)
+                                    }
+                                    disabled={pendingKey === `pay:${entry.occurrenceId}`}
+                                    className="text-accent-primary underline underline-offset-2 disabled:opacity-50"
                                   >
-                                    Pay
+                                    {pendingKey === `pay:${entry.occurrenceId}` ? "Paying…" : "Pay"}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => onSkip(entry.billId, entry.occurrenceId)}
-                                    className="text-text-secondary underline underline-offset-2"
+                                    disabled={pendingKey === `skip:${entry.occurrenceId}`}
+                                    className="text-text-secondary underline underline-offset-2 disabled:opacity-50"
                                   >
-                                    Skip
+                                    {pendingKey === `skip:${entry.occurrenceId}`
+                                      ? "Skipping…"
+                                      : "Skip"}
                                   </button>
                                 </div>
-                              )}
+                              ))}
                           </div>
                         </>
                       )}

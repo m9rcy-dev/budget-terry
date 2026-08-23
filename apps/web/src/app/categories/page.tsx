@@ -26,6 +26,7 @@ export default function CategoriesPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -59,12 +60,20 @@ export default function CategoriesPage() {
   };
 
   const onArchiveToggle = async (category: Category): Promise<void> => {
-    if (category.isArchived) {
-      await restoreCategory(apiClient, category.id);
-    } else {
-      await archiveCategory(apiClient, category.id);
+    setErrorMessage(null);
+    setPendingKey(`archive:${category.id}`);
+    try {
+      if (category.isArchived) {
+        await restoreCategory(apiClient, category.id);
+      } else {
+        await archiveCategory(apiClient, category.id);
+      }
+      await refresh();
+    } catch {
+      setErrorMessage("Could not update this category. Please try again.");
+    } finally {
+      setPendingKey(null);
     }
-    await refresh();
   };
 
   if (isLoading || !user) {
@@ -116,9 +125,14 @@ export default function CategoriesPage() {
               <button
                 type="button"
                 onClick={() => onArchiveToggle(category)}
-                className="text-sm text-accent-primary underline underline-offset-2"
+                disabled={pendingKey === `archive:${category.id}`}
+                className="text-sm text-accent-primary underline underline-offset-2 disabled:opacity-50"
               >
-                {category.isArchived ? "Restore" : "Archive"}
+                {pendingKey === `archive:${category.id}`
+                  ? "Working…"
+                  : category.isArchived
+                    ? "Restore"
+                    : "Archive"}
               </button>
             </li>
           ))}

@@ -65,6 +65,16 @@ export default function BillsScreen() {
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
 
+  // Set when a bill with no default account is paid — the occurrence whose
+  // row should show an inline "which account?" picker instead of paying
+  // immediately (see onPayClick).
+  const [payingOccurrence, setPayingOccurrence] = useState<{
+    billId: string;
+    occurrenceId: string;
+  } | null>(null);
+  const [payAccountId, setPayAccountId] = useState<string | undefined>(undefined);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace("/login");
@@ -105,24 +115,65 @@ export default function BillsScreen() {
     }
   };
 
-  const onPay = async (billId: string, occurrenceId: string): Promise<void> => {
-    setErrorMessage(null);
-    try {
-      await payBillOccurrence(apiClient, billId, occurrenceId);
-      await refresh();
-    } catch {
-      setErrorMessage("Could not mark this occurrence paid — does the bill have an account?");
+  // Bills without a default account need one chosen at pay-time — the API
+  // accepts accountId on the pay call for exactly this (see
+  // markBillOccurrencePaidSchema). Bills that already have one pay in a
+  // single tap, unchanged.
+  const onPayPress = (bill: Bill, occurrenceId: string): void => {
+    if (bill.accountId) {
+      void onPay(bill.id, occurrenceId, bill.accountId);
+    } else {
+      setErrorMessage(null);
+      setPayAccountId(undefined);
+      setPayingOccurrence({ billId: bill.id, occurrenceId });
     }
   };
 
+  const onPay = async (billId: string, occurrenceId: string, accountId: string): Promise<void> => {
+    setErrorMessage(null);
+    setPendingKey(`pay:${occurrenceId}`);
+    try {
+      await payBillOccurrence(apiClient, billId, occurrenceId, { accountId });
+      setPayingOccurrence(null);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not mark this occurrence as paid. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  const onConfirmPay = (): void => {
+    if (!payingOccurrence || !payAccountId) {
+      return;
+    }
+    void onPay(payingOccurrence.billId, payingOccurrence.occurrenceId, payAccountId);
+  };
+
   const onSkip = async (billId: string, occurrenceId: string): Promise<void> => {
-    await skipBillOccurrence(apiClient, billId, occurrenceId);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`skip:${occurrenceId}`);
+    try {
+      await skipBillOccurrence(apiClient, billId, occurrenceId);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not skip this occurrence. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   const onArchive = async (billId: string): Promise<void> => {
-    await archiveBill(apiClient, billId);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`archive:${billId}`);
+    try {
+      await archiveBill(apiClient, billId);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not archive this bill. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   if (isLoading || !user) {
@@ -196,8 +247,13 @@ export default function BillsScreen() {
             <View style={styles.billCard}>
               <View style={styles.billHeader}>
                 <Text style={styles.billName}>{item.name}</Text>
-                <Pressable onPress={() => onArchive(item.id)}>
-                  <Text style={styles.link}>Archive</Text>
+                <Pressable
+                  onPress={() => onArchive(item.id)}
+                  disabled={pendingKey === `archive:${item.id}`}
+                >
+                  <Text style={styles.link}>
+                    {pendingKey === `archive:${item.id}` ? "Archiving…" : "Archive"}
+                  </Text>
                 </Pressable>
               </View>
 
@@ -213,16 +269,65 @@ export default function BillsScreen() {
                       label={STATUS_LABEL[occurrence.displayStatus] ?? occurrence.displayStatus}
                     />
                   </View>
-                  {occurrence.paymentStatus === "PENDING" && (
-                    <View style={styles.occurrenceActions}>
-                      <Pressable onPress={() => onPay(item.id, occurrence.id)}>
-                        <Text style={styles.link}>Pay</Text>
-                      </Pressable>
-                      <Pressable onPress={() => onSkip(item.id, occurrence.id)}>
-                        <Text style={styles.linkMuted}>Skip</Text>
-                      </Pressable>
-                    </View>
-                  )}
+                  {occurrence.paymentStatus === "PENDING" &&
+                    (payingOccurrence?.occurrenceId === occurrence.id ? (
+                      <View style={styles.payPicker}>
+                        <View style={styles.row}>
+                          {accounts.map((account) => (
+                            <Pressable
+                              key={account.id}
+                              onPress={() => setPayAccountId(account.id)}
+                              style={[
+                                styles.chip,
+                                payAccountId === account.id && styles.chipSelected,
+                              ]}
+                            >
+                              <Text
+                                style={
+                                  payAccountId === account.id
+                                    ? styles.chipTextSelected
+                                    : styles.chipText
+                                }
+                              >
+                                {account.name}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                        <View style={styles.occurrenceActions}>
+                          <Pressable
+                            onPress={onConfirmPay}
+                            disabled={!payAccountId || pendingKey === `pay:${occurrence.id}`}
+                          >
+                            <Text style={styles.link}>
+                              {pendingKey === `pay:${occurrence.id}` ? "Paying…" : "Confirm"}
+                            </Text>
+                          </Pressable>
+                          <Pressable onPress={() => setPayingOccurrence(null)}>
+                            <Text style={styles.linkMuted}>Cancel</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.occurrenceActions}>
+                        <Pressable
+                          onPress={() => onPayPress(item, occurrence.id)}
+                          disabled={pendingKey === `pay:${occurrence.id}`}
+                        >
+                          <Text style={styles.link}>
+                            {pendingKey === `pay:${occurrence.id}` ? "Paying…" : "Pay"}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => onSkip(item.id, occurrence.id)}
+                          disabled={pendingKey === `skip:${occurrence.id}`}
+                        >
+                          <Text style={styles.linkMuted}>
+                            {pendingKey === `skip:${occurrence.id}` ? "Skipping…" : "Skip"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))}
                 </View>
               ))}
             </View>
@@ -262,6 +367,7 @@ const styles = StyleSheet.create({
   },
   occurrenceText: { fontSize: 12, color: colors.textPrimary, flexShrink: 1 },
   occurrenceActions: { flexDirection: "row", gap: spacing.sm + 4 },
+  payPicker: { gap: spacing.xs + 2, alignItems: "flex-end" },
   link: { textDecorationLine: "underline", color: colors.accentPrimary },
   linkMuted: { textDecorationLine: "underline", color: colors.textSecondary },
 });

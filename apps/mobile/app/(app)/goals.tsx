@@ -40,6 +40,7 @@ export default function GoalsScreen() {
   const [targetAmount, setTargetAmount] = useState("");
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [contributionAmounts, setContributionAmounts] = useState<Record<string, string>>({});
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -78,6 +79,7 @@ export default function GoalsScreen() {
 
   const onContribute = async (goalId: string): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey(`contribute:${goalId}`);
     try {
       await addGoalContribution(apiClient, goalId, {
         amountMinorUnits: dollarsToMinorUnits(contributionAmounts[goalId] ?? "0"),
@@ -86,17 +88,35 @@ export default function GoalsScreen() {
       await refresh();
     } catch {
       setErrorMessage("Could not add the contribution — does this goal have an account?");
+    } finally {
+      setPendingKey(null);
     }
   };
 
   const onComplete = async (goalId: string): Promise<void> => {
-    await completeGoal(apiClient, goalId);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`complete:${goalId}`);
+    try {
+      await completeGoal(apiClient, goalId);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not complete this goal. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   const onArchive = async (goalId: string): Promise<void> => {
-    await archiveGoal(apiClient, goalId);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`archive:${goalId}`);
+    try {
+      await archiveGoal(apiClient, goalId);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not archive this goal. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   if (isLoading || !user) {
@@ -151,12 +171,22 @@ export default function GoalsScreen() {
                   </Text>
                   <View style={styles.goalActions}>
                     {item.status === "ACTIVE" && (
-                      <Pressable onPress={() => onComplete(item.id)}>
-                        <Text style={styles.link}>Complete</Text>
+                      <Pressable
+                        onPress={() => onComplete(item.id)}
+                        disabled={pendingKey === `complete:${item.id}`}
+                      >
+                        <Text style={styles.link}>
+                          {pendingKey === `complete:${item.id}` ? "Completing…" : "Complete"}
+                        </Text>
                       </Pressable>
                     )}
-                    <Pressable onPress={() => onArchive(item.id)}>
-                      <Text style={styles.linkMuted}>Archive</Text>
+                    <Pressable
+                      onPress={() => onArchive(item.id)}
+                      disabled={pendingKey === `archive:${item.id}`}
+                    >
+                      <Text style={styles.linkMuted}>
+                        {pendingKey === `archive:${item.id}` ? "Archiving…" : "Archive"}
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
@@ -186,8 +216,13 @@ export default function GoalsScreen() {
                       }
                       style={styles.contributeInput}
                     />
-                    <Pressable onPress={() => onContribute(item.id)}>
-                      <Text style={styles.link}>Add</Text>
+                    <Pressable
+                      onPress={() => onContribute(item.id)}
+                      disabled={pendingKey === `contribute:${item.id}`}
+                    >
+                      <Text style={styles.link}>
+                        {pendingKey === `contribute:${item.id}` ? "Adding…" : "Add"}
+                      </Text>
                     </Pressable>
                   </View>
                 )}

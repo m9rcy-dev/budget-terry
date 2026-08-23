@@ -69,6 +69,16 @@ export default function BillsPage() {
   const [categoryId, setCategoryId] = useState("");
   const [accountId, setAccountId] = useState("");
 
+  // Set when a bill with no default account is paid — the occurrence whose
+  // row should show an inline "which account?" picker instead of paying
+  // immediately (see onPayClick).
+  const [payingOccurrence, setPayingOccurrence] = useState<{
+    billId: string;
+    occurrenceId: string;
+  } | null>(null);
+  const [payAccountId, setPayAccountId] = useState("");
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login");
@@ -113,28 +123,69 @@ export default function BillsPage() {
     }
   };
 
-  const onPay = async (billId: string, occurrenceId: string): Promise<void> => {
+  // Bills without a default account need one chosen at pay-time — the API
+  // accepts accountId on the pay call for exactly this (see
+  // markBillOccurrencePaidSchema). Bills that already have one pay in a
+  // single click, unchanged.
+  const onPayClick = (bill: Bill, occurrenceId: string): void => {
+    if (bill.accountId) {
+      void onPay(bill.id, occurrenceId, bill.accountId);
+    } else {
+      setErrorMessage(null);
+      setPayAccountId("");
+      setPayingOccurrence({ billId: bill.id, occurrenceId });
+    }
+  };
+
+  const onPay = async (billId: string, occurrenceId: string, accountId: string): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey(`pay:${occurrenceId}`);
     try {
-      await payBillOccurrence(apiClient, billId, occurrenceId);
+      await payBillOccurrence(apiClient, billId, occurrenceId, { accountId });
+      setPayingOccurrence(null);
       await refresh();
     } catch {
-      setErrorMessage("Could not mark this occurrence paid — does the bill have an account?");
+      setErrorMessage("Could not mark this occurrence as paid. Please try again.");
+    } finally {
+      setPendingKey(null);
     }
+  };
+
+  const onConfirmPay = (): void => {
+    if (!payingOccurrence || !payAccountId) {
+      return;
+    }
+    void onPay(payingOccurrence.billId, payingOccurrence.occurrenceId, payAccountId);
   };
 
   const onSkip = async (billId: string, occurrenceId: string): Promise<void> => {
-    await skipBillOccurrence(apiClient, billId, occurrenceId);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`skip:${occurrenceId}`);
+    try {
+      await skipBillOccurrence(apiClient, billId, occurrenceId);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not skip this occurrence. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   const onArchiveToggle = async (bill: Bill): Promise<void> => {
-    if (bill.isArchived) {
-      await restoreBill(apiClient, bill.id);
-    } else {
-      await archiveBill(apiClient, bill.id);
+    setErrorMessage(null);
+    setPendingKey(`archive:${bill.id}`);
+    try {
+      if (bill.isArchived) {
+        await restoreBill(apiClient, bill.id);
+      } else {
+        await archiveBill(apiClient, bill.id);
+      }
+      await refresh();
+    } catch {
+      setErrorMessage("Could not update this bill. Please try again.");
+    } finally {
+      setPendingKey(null);
     }
-    await refresh();
   };
 
   if (isLoading || !user) {
@@ -244,9 +295,14 @@ export default function BillsPage() {
                 <button
                   type="button"
                   onClick={() => onArchiveToggle(bill)}
-                  className="text-sm text-accent-primary underline underline-offset-2"
+                  disabled={pendingKey === `archive:${bill.id}`}
+                  className="text-sm text-accent-primary underline underline-offset-2 disabled:opacity-50"
                 >
-                  {bill.isArchived ? "Restore" : "Archive"}
+                  {pendingKey === `archive:${bill.id}`
+                    ? "Working…"
+                    : bill.isArchived
+                      ? "Restore"
+                      : "Archive"}
                 </button>
               </div>
 
@@ -266,24 +322,57 @@ export default function BillsPage() {
                         label={STATUS_LABEL[occurrence.displayStatus] ?? occurrence.displayStatus}
                       />
                     </div>
-                    {occurrence.paymentStatus === "PENDING" && (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onPay(bill.id, occurrence.id)}
-                          className="text-accent-primary underline underline-offset-2"
-                        >
-                          Pay
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onSkip(bill.id, occurrence.id)}
-                          className="text-text-secondary underline underline-offset-2"
-                        >
-                          Skip
-                        </button>
-                      </div>
-                    )}
+                    {occurrence.paymentStatus === "PENDING" &&
+                      (payingOccurrence?.occurrenceId === occurrence.id ? (
+                        <div className="flex items-center gap-2">
+                          <Select
+                            aria-label="Account to pay from"
+                            value={payAccountId}
+                            onChange={(event) => setPayAccountId(event.target.value)}
+                          >
+                            <option value="">Pay from…</option>
+                            {accounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </Select>
+                          <button
+                            type="button"
+                            onClick={onConfirmPay}
+                            disabled={!payAccountId || pendingKey === `pay:${occurrence.id}`}
+                            className="text-accent-primary underline underline-offset-2 disabled:opacity-50"
+                          >
+                            {pendingKey === `pay:${occurrence.id}` ? "Paying…" : "Confirm"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPayingOccurrence(null)}
+                            className="text-text-secondary underline underline-offset-2"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onPayClick(bill, occurrence.id)}
+                            disabled={pendingKey === `pay:${occurrence.id}`}
+                            className="text-accent-primary underline underline-offset-2 disabled:opacity-50"
+                          >
+                            {pendingKey === `pay:${occurrence.id}` ? "Paying…" : "Pay"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onSkip(bill.id, occurrence.id)}
+                            disabled={pendingKey === `skip:${occurrence.id}`}
+                            className="text-text-secondary underline underline-offset-2 disabled:opacity-50"
+                          >
+                            {pendingKey === `skip:${occurrence.id}` ? "Skipping…" : "Skip"}
+                          </button>
+                        </div>
+                      ))}
                   </li>
                 ))}
               </ul>

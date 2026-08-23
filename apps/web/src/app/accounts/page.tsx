@@ -29,6 +29,7 @@ export default function AccountsPage() {
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("EVERYDAY");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -62,12 +63,20 @@ export default function AccountsPage() {
   };
 
   const onArchiveToggle = async (account: Account): Promise<void> => {
-    if (account.isArchived) {
-      await restoreAccount(apiClient, account.id);
-    } else {
-      await archiveAccount(apiClient, account.id);
+    setErrorMessage(null);
+    setPendingKey(`archive:${account.id}`);
+    try {
+      if (account.isArchived) {
+        await restoreAccount(apiClient, account.id);
+      } else {
+        await archiveAccount(apiClient, account.id);
+      }
+      await refresh();
+    } catch {
+      setErrorMessage("Could not update this account. Please try again.");
+    } finally {
+      setPendingKey(null);
     }
-    await refresh();
   };
 
   if (isLoading || !user) {
@@ -130,9 +139,14 @@ export default function AccountsPage() {
               <button
                 type="button"
                 onClick={() => onArchiveToggle(account)}
-                className="text-sm text-accent-primary underline underline-offset-2"
+                disabled={pendingKey === `archive:${account.id}`}
+                className="text-sm text-accent-primary underline underline-offset-2 disabled:opacity-50"
               >
-                {account.isArchived ? "Restore" : "Archive"}
+                {pendingKey === `archive:${account.id}`
+                  ? "Working…"
+                  : account.isArchived
+                    ? "Restore"
+                    : "Archive"}
               </button>
             </li>
           ))}

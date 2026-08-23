@@ -7,6 +7,7 @@ export interface CalendarBillEntry {
   billId: string;
   occurrenceId: string;
   name: string;
+  accountId: string | null;
   amountMinorUnits: number;
   currency: CurrencyCode;
   displayStatus: BillDisplayStatus;
