@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react-native";
-import HomeScreen from "./index";
+import HomeScreen from "../app/(app)/index";
 
 const mockReplace = jest.fn();
 jest.mock("expo-router", () => {
@@ -11,7 +11,7 @@ jest.mock("expo-router", () => {
   };
 });
 
-jest.mock("../../lib/api-client", () => ({ apiClient: {} }));
+jest.mock("../lib/api-client", () => ({ apiClient: {} }));
 
 const mockGetDashboardSummary = jest.fn();
 jest.mock("@budget-terry/api-client", () => ({
@@ -20,7 +20,7 @@ jest.mock("@budget-terry/api-client", () => ({
 
 const mockLogout = jest.fn();
 const mockUseAuth = jest.fn();
-jest.mock("../../lib/auth-context", () => ({
+jest.mock("../lib/auth-context", () => ({
   useAuth: () => mockUseAuth(),
 }));
 

@@ -43,13 +43,21 @@ function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function startOfMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+/** Monday-first 6-week grid so every month fits without a variable row count — same shape as apps/web/src/app/calendar/page.tsx's grid. */
+function buildMonthGrid(year: number, month: number): Date[] {
+  const firstOfMonth = new Date(Date.UTC(year, month, 1));
+  const firstWeekday = (firstOfMonth.getUTCDay() + 6) % 7; // 0 = Monday
+  const gridStart = new Date(firstOfMonth);
+  gridStart.setUTCDate(gridStart.getUTCDate() - firstWeekday);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setUTCDate(date.getUTCDate() + index);
+    return date;
+  });
 }
 
-function endOfMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
-}
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function entryKey(entry: CalendarEntry): string {
   if (entry.type === "BILL") return entry.occurrenceId;
@@ -81,6 +89,12 @@ export default function CalendarScreen() {
   const [payAccountId, setPayAccountId] = useState<string | undefined>(undefined);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
+  // Set by tapping a day in the month grid — filters the agenda list below
+  // to just that day, since scrolling a long list into view (web's
+  // click-an-anchor pattern) doesn't translate well to a short mobile
+  // viewport. Tap the same day again (or "Show full month") to clear it.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace("/login");
@@ -94,8 +108,12 @@ export default function CalendarScreen() {
     listAccounts(apiClient).then(setAccounts);
   }, [user]);
 
-  const rangeFrom = toIsoDate(startOfMonth(viewDate));
-  const rangeTo = toIsoDate(endOfMonth(viewDate));
+  const monthGrid = useMemo(
+    () => buildMonthGrid(viewDate.getUTCFullYear(), viewDate.getUTCMonth()),
+    [viewDate],
+  );
+  const rangeFrom = toIsoDate(monthGrid[0]!);
+  const rangeTo = toIsoDate(monthGrid[monthGrid.length - 1]!);
 
   const refresh = async (): Promise<void> => {
     setEntries(await getCalendarEntries(apiClient, rangeFrom, rangeTo));
@@ -109,15 +127,32 @@ export default function CalendarScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, rangeFrom, rangeTo]);
 
-  const entriesByDate = useMemo(() => {
+  useEffect(() => {
+    setSelectedDate(null);
+  }, [rangeFrom, rangeTo]);
+
+  const entriesByDateMap = useMemo(() => {
     const map = new Map<string, CalendarEntry[]>();
     for (const entry of entries ?? []) {
       const bucket = map.get(entry.date) ?? [];
       bucket.push(entry);
       map.set(entry.date, bucket);
     }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return map;
   }, [entries]);
+
+  const sortedDates = useMemo(
+    () => [...entriesByDateMap.entries()].sort(([a], [b]) => a.localeCompare(b)),
+    [entriesByDateMap],
+  );
+
+  const visibleDates = selectedDate
+    ? sortedDates.filter(([date]) => date === selectedDate)
+    : sortedDates;
+
+  const onDayCellPress = (iso: string): void => {
+    setSelectedDate((current) => (current === iso ? null : iso));
+  };
 
   // Bills without a default account need one chosen at pay-time — the API
   // accepts accountId on the pay call for exactly this (see
@@ -180,6 +215,8 @@ export default function CalendarScreen() {
     year: "numeric",
     timeZone: "UTC",
   });
+  const today = toIsoDate(new Date());
+  const currentMonth = viewDate.getUTCMonth();
 
   return (
     <Screen>
@@ -213,123 +250,178 @@ export default function CalendarScreen() {
       {entries === null ? (
         <LoadingState message="Loading calendar…" />
       ) : (
-        <ScrollView style={styles.list} scrollEnabled={false}>
-          {entriesByDate.length === 0 && (
-            <EmptyState message="Nothing on the calendar this month." />
-          )}
-          {entriesByDate.map(([date, dayEntries]) => (
-            <View key={date} style={styles.daySection}>
-              <Text style={styles.dayHeading}>
-                {new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  timeZone: "UTC",
-                })}
+        <>
+          <View style={styles.weekdayRow}>
+            {WEEKDAY_LABELS.map((label) => (
+              <Text key={label} style={styles.weekdayLabel}>
+                {label}
               </Text>
-              {dayEntries.map((entry) => (
-                <View key={entryKey(entry)} style={styles.entryRow}>
-                  {entry.type === "BILL" && (
-                    <>
-                      <View style={styles.entryInfo}>
-                        <Text style={styles.entryText}>
-                          {entry.name} · ${minorUnitsToDollars(entry.amountMinorUnits)}
-                        </Text>
-                        <StatusDot
-                          color={entryDotColor(entry)}
-                          label={BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
-                        />
-                      </View>
-                      {entry.displayStatus !== "PAID" &&
-                        entry.displayStatus !== "SKIPPED" &&
-                        (payingOccurrence?.occurrenceId === entry.occurrenceId ? (
-                          <View style={styles.payPicker}>
-                            <View style={styles.pickerRow}>
-                              {accounts.map((account) => (
-                                <Pressable
-                                  key={account.id}
-                                  onPress={() => setPayAccountId(account.id)}
-                                  style={[
-                                    styles.chip,
-                                    payAccountId === account.id && styles.chipSelected,
-                                  ]}
-                                >
-                                  <Text
-                                    style={
-                                      payAccountId === account.id
-                                        ? styles.chipTextSelected
-                                        : styles.chipText
-                                    }
+            ))}
+          </View>
+          <View style={styles.grid}>
+            {monthGrid.map((date) => {
+              const iso = toIsoDate(date);
+              const dayEntries = entriesByDateMap.get(iso) ?? [];
+              const isCurrentMonth = date.getUTCMonth() === currentMonth;
+              const isToday = iso === today;
+              const isSelected = selectedDate === iso;
+              return (
+                <Pressable
+                  key={iso}
+                  onPress={() => onDayCellPress(iso)}
+                  style={[
+                    styles.dayCell,
+                    isToday && styles.dayCellToday,
+                    isSelected && styles.dayCellSelected,
+                  ]}
+                >
+                  <Text style={[styles.dayNumber, !isCurrentMonth && styles.dayNumberMuted]}>
+                    {date.getUTCDate()}
+                  </Text>
+                  <View style={styles.dotsRow}>
+                    {dayEntries.slice(0, 4).map((entry) => (
+                      <View
+                        key={entryKey(entry)}
+                        style={[styles.dot, { backgroundColor: entryDotColor(entry) }]}
+                      />
+                    ))}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+          {selectedDate && (
+            <Pressable onPress={() => setSelectedDate(null)}>
+              <Text style={styles.link}>Show full month</Text>
+            </Pressable>
+          )}
+
+          <ScrollView style={styles.list} scrollEnabled={false}>
+            {visibleDates.length === 0 && (
+              <EmptyState
+                message={
+                  selectedDate
+                    ? "Nothing scheduled for this day."
+                    : "Nothing on the calendar this month."
+                }
+              />
+            )}
+            {visibleDates.map(([date, dayEntries]) => (
+              <View key={date} style={styles.daySection}>
+                <Text style={styles.dayHeading}>
+                  {new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    timeZone: "UTC",
+                  })}
+                </Text>
+                {dayEntries.map((entry) => (
+                  <View key={entryKey(entry)} style={styles.entryRow}>
+                    {entry.type === "BILL" && (
+                      <>
+                        <View style={styles.entryInfo}>
+                          <Text style={styles.entryText}>
+                            {entry.name} · ${minorUnitsToDollars(entry.amountMinorUnits)}
+                          </Text>
+                          <StatusDot
+                            color={entryDotColor(entry)}
+                            label={BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
+                          />
+                        </View>
+                        {entry.displayStatus !== "PAID" &&
+                          entry.displayStatus !== "SKIPPED" &&
+                          (payingOccurrence?.occurrenceId === entry.occurrenceId ? (
+                            <View style={styles.payPicker}>
+                              <View style={styles.pickerRow}>
+                                {accounts.map((account) => (
+                                  <Pressable
+                                    key={account.id}
+                                    onPress={() => setPayAccountId(account.id)}
+                                    style={[
+                                      styles.chip,
+                                      payAccountId === account.id && styles.chipSelected,
+                                    ]}
                                   >
-                                    {account.name}
+                                    <Text
+                                      style={
+                                        payAccountId === account.id
+                                          ? styles.chipTextSelected
+                                          : styles.chipText
+                                      }
+                                    >
+                                      {account.name}
+                                    </Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+                              <View style={styles.entryActions}>
+                                <Pressable
+                                  onPress={onConfirmPay}
+                                  disabled={
+                                    !payAccountId || pendingKey === `pay:${entry.occurrenceId}`
+                                  }
+                                >
+                                  <Text style={styles.link}>
+                                    {pendingKey === `pay:${entry.occurrenceId}`
+                                      ? "Paying…"
+                                      : "Confirm"}
                                   </Text>
                                 </Pressable>
-                              ))}
+                                <Pressable onPress={() => setPayingOccurrence(null)}>
+                                  <Text style={styles.linkMuted}>Cancel</Text>
+                                </Pressable>
+                              </View>
                             </View>
+                          ) : (
                             <View style={styles.entryActions}>
                               <Pressable
-                                onPress={onConfirmPay}
-                                disabled={
-                                  !payAccountId || pendingKey === `pay:${entry.occurrenceId}`
+                                onPress={() =>
+                                  onPayPress(entry.accountId, entry.billId, entry.occurrenceId)
                                 }
+                                disabled={pendingKey === `pay:${entry.occurrenceId}`}
                               >
                                 <Text style={styles.link}>
-                                  {pendingKey === `pay:${entry.occurrenceId}`
-                                    ? "Paying…"
-                                    : "Confirm"}
+                                  {pendingKey === `pay:${entry.occurrenceId}` ? "Paying…" : "Pay"}
                                 </Text>
                               </Pressable>
-                              <Pressable onPress={() => setPayingOccurrence(null)}>
-                                <Text style={styles.linkMuted}>Cancel</Text>
+                              <Pressable
+                                onPress={() => onSkip(entry.billId, entry.occurrenceId)}
+                                disabled={pendingKey === `skip:${entry.occurrenceId}`}
+                              >
+                                <Text style={styles.linkMuted}>
+                                  {pendingKey === `skip:${entry.occurrenceId}`
+                                    ? "Skipping…"
+                                    : "Skip"}
+                                </Text>
                               </Pressable>
                             </View>
-                          </View>
-                        ) : (
-                          <View style={styles.entryActions}>
-                            <Pressable
-                              onPress={() =>
-                                onPayPress(entry.accountId, entry.billId, entry.occurrenceId)
-                              }
-                              disabled={pendingKey === `pay:${entry.occurrenceId}`}
-                            >
-                              <Text style={styles.link}>
-                                {pendingKey === `pay:${entry.occurrenceId}` ? "Paying…" : "Pay"}
-                              </Text>
-                            </Pressable>
-                            <Pressable
-                              onPress={() => onSkip(entry.billId, entry.occurrenceId)}
-                              disabled={pendingKey === `skip:${entry.occurrenceId}`}
-                            >
-                              <Text style={styles.linkMuted}>
-                                {pendingKey === `skip:${entry.occurrenceId}` ? "Skipping…" : "Skip"}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        ))}
-                    </>
-                  )}
-                  {entry.type === "INCOME" && (
-                    <View style={styles.entryInfo}>
-                      <StatusDot color={entryDotColor(entry)} label="Income" />
-                      <Text style={styles.entryText}>
-                        {entry.merchant ?? entry.description ?? "Income"} · +$
-                        {minorUnitsToDollars(entry.amountMinorUnits)}
-                      </Text>
-                    </View>
-                  )}
-                  {entry.type === "SAVINGS_CONTRIBUTION" && (
-                    <View style={styles.entryInfo}>
-                      <StatusDot color={entryDotColor(entry)} label="Savings contribution" />
-                      <Text style={styles.entryText}>
-                        {entry.goalName} · ${minorUnitsToDollars(entry.amountMinorUnits)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          ))}
-        </ScrollView>
+                          ))}
+                      </>
+                    )}
+                    {entry.type === "INCOME" && (
+                      <View style={styles.entryInfo}>
+                        <StatusDot color={entryDotColor(entry)} label="Income" />
+                        <Text style={styles.entryText}>
+                          {entry.merchant ?? entry.description ?? "Income"} · +$
+                          {minorUnitsToDollars(entry.amountMinorUnits)}
+                        </Text>
+                      </View>
+                    )}
+                    {entry.type === "SAVINGS_CONTRIBUTION" && (
+                      <View style={styles.entryInfo}>
+                        <StatusDot color={entryDotColor(entry)} label="Savings contribution" />
+                        <Text style={styles.entryText}>
+                          {entry.goalName} · ${minorUnitsToDollars(entry.amountMinorUnits)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        </>
       )}
     </Screen>
   );
@@ -337,6 +429,30 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  weekdayRow: { flexDirection: "row", marginTop: spacing.sm },
+  weekdayLabel: {
+    width: `${100 / 7}%`,
+    textAlign: "center",
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  grid: { flexDirection: "row", flexWrap: "wrap" },
+  dayCell: {
+    width: `${100 / 7}%`,
+    minHeight: 44,
+    paddingVertical: spacing.xs,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
+    borderRadius: radius.sm,
+  },
+  dayCellToday: { borderColor: colors.accentPrimary },
+  dayCellSelected: { backgroundColor: colors.surface },
+  dayNumber: { fontSize: 12, color: colors.textPrimary },
+  dayNumberMuted: { color: colors.textSecondary },
+  dotsRow: { flexDirection: "row", gap: 2, marginTop: 3, minHeight: 6 },
+  dot: { width: 5, height: 5, borderRadius: 3 },
   monthLabel: { fontSize: 16, fontWeight: "600", color: colors.textPrimary },
   navRow: { flexDirection: "row", gap: spacing.md },
   link: { textDecorationLine: "underline", color: colors.accentPrimary },
