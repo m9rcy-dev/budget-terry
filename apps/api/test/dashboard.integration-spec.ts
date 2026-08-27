@@ -28,7 +28,7 @@ describe("dashboard", () => {
     const account = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "Everyday", type: "EVERYDAY", currency: "NZD" })
+      .send({ name: "Everyday", type: "CHEQUE", currency: "NZD" })
       .expect(201);
 
     const categories = await http()
@@ -139,5 +139,71 @@ describe("dashboard", () => {
 
   it("rejects an unauthenticated request", async () => {
     await http().get("/dashboard/summary").expect(401);
+  });
+
+  describe("upcomingBills", () => {
+    function daysFromToday(days: number): string {
+      const date = new Date();
+      date.setUTCDate(date.getUTCDate() + days);
+      return date.toISOString().slice(0, 10);
+    }
+
+    it("includes a bill due within the next week, but not one due later or already paid", async () => {
+      const { accessToken, accountId } = await registerUserWithAccount("erin-dash@example.com");
+
+      const dueSoon = await http()
+        .post("/bills")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({
+          name: "Power",
+          amountMinorUnits: 8000,
+          currency: "NZD",
+          recurrence: "MONTHLY",
+          firstDueDate: daysFromToday(3),
+          autoPay: false,
+        })
+        .expect(201);
+
+      await http()
+        .post("/bills")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({
+          name: "Insurance",
+          amountMinorUnits: 12000,
+          currency: "NZD",
+          recurrence: "MONTHLY",
+          firstDueDate: daysFromToday(30),
+          autoPay: false,
+        })
+        .expect(201);
+
+      const paidBill = await http()
+        .post("/bills")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({
+          name: "Rent",
+          amountMinorUnits: 200000,
+          currency: "NZD",
+          recurrence: "MONTHLY",
+          firstDueDate: daysFromToday(2),
+          autoPay: false,
+        })
+        .expect(201);
+      const paidOccurrenceId = paidBill.body.occurrences[0].id;
+      await http()
+        .post(`/bills/${paidBill.body.id}/occurrences/${paidOccurrenceId}/pay`)
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({ accountId })
+        .expect(201);
+
+      const summary = await http()
+        .get("/dashboard/summary")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(summary.body.upcomingBills).toHaveLength(1);
+      expect(summary.body.upcomingBills[0].name).toBe("Power");
+      expect(summary.body.upcomingBills[0].billId).toBe(dueSoon.body.id);
+    });
   });
 });

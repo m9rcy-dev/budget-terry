@@ -3,7 +3,7 @@ import { createAccountSchema, updateAccountSchema } from "./account";
 
 describe("createAccountSchema", () => {
   it("accepts a valid account, defaulting currency to NZD", () => {
-    const result = createAccountSchema.safeParse({ name: "Everyday", type: "EVERYDAY" });
+    const result = createAccountSchema.safeParse({ name: "Everyday", type: "CHEQUE" });
 
     expect(result.success).toBe(true);
     expect(result.success && result.data.currency).toBe("NZD");
@@ -16,7 +16,7 @@ describe("createAccountSchema", () => {
   });
 
   it("rejects an empty name", () => {
-    const result = createAccountSchema.safeParse({ name: "", type: "EVERYDAY" });
+    const result = createAccountSchema.safeParse({ name: "", type: "CHEQUE" });
 
     expect(result.success).toBe(false);
   });

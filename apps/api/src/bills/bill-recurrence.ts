@@ -17,9 +17,11 @@ export const OCCURRENCE_HORIZON_DAYS = 90;
 /**
  * Also left open by ADR-010: how many days out counts as "due soon"
  * rather than merely "upcoming". A week gives enough lead time to act
- * without flagging everything in the horizon as urgent.
+ * without flagging everything in the horizon as urgent. Exported so the
+ * dashboard's "upcoming bills" window can reuse the same "week" meaning
+ * rather than defining a second, possibly-different number.
  */
-const DUE_SOON_WINDOW_DAYS = 7;
+export const DUE_SOON_WINDOW_DAYS = 7;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

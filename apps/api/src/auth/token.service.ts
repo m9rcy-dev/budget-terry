@@ -25,6 +25,14 @@ export interface GeneratedLoginCode {
   expiresAt: Date;
 }
 
+export interface GeneratedDeviceTrustToken {
+  /** Returned to the client — never stored. */
+  token: string;
+  /** Stored server-side; the raw token can't be recovered from this. */
+  tokenHash: string;
+  expiresAt: Date;
+}
+
 /**
  * Access tokens are short-lived signed JWTs. Refresh tokens are opaque
  * random values — only their SHA-256 hash is stored, so a database leak
@@ -79,5 +87,23 @@ export class TokenService {
 
   hashLoginCode(code: string): string {
     return createHash("sha256").update(code).digest("hex");
+  }
+
+  /**
+   * "Remember this device" — opaque, long-lived, same only-the-hash-is-
+   * stored/rotate-on-use shape as the refresh token, but a separate token
+   * entirely (DeviceTrust, not RefreshToken): it must survive logout. See
+   * docs/trusted-device-plan.md.
+   */
+  generateDeviceTrustToken(): GeneratedDeviceTrustToken {
+    const token = randomBytes(48).toString("base64url");
+    const ttlDays = this.configService.get("DEVICE_TRUST_TTL_DAYS", { infer: true });
+    const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+
+    return { token, tokenHash: this.hashDeviceTrustToken(token), expiresAt };
+  }
+
+  hashDeviceTrustToken(token: string): string {
+    return createHash("sha256").update(token).digest("hex");
   }
 }

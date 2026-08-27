@@ -13,6 +13,7 @@ import { colors, radius, spacing } from "@budget-terry/ui";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+import { ListLoadError } from "../../components/ListLoadError";
 import { LoadingState } from "../../components/LoadingState";
 import { Screen } from "../../components/Screen";
 import { Section } from "../../components/Section";
@@ -36,6 +37,8 @@ export default function TransactionsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [listError, setListError] = useState(false);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [accountId, setAccountId] = useState("");
@@ -66,11 +69,17 @@ export default function TransactionsScreen() {
     setTransactions(result.items);
   };
 
+  const loadTransactions = (): void => {
+    setListError(false);
+    refresh().catch(() => setListError(true));
+  };
+
   useEffect(() => {
     if (!user) {
       return;
     }
-    refresh().catch(() => setErrorMessage("Could not load transactions."));
+    loadTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const accountName = (id: string): string =>
@@ -80,6 +89,7 @@ export default function TransactionsScreen() {
 
   const onAdd = async (): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey("create");
     try {
       await createTransaction(apiClient, {
         accountId,
@@ -93,12 +103,22 @@ export default function TransactionsScreen() {
       await refresh();
     } catch {
       setErrorMessage("Could not add the transaction.");
+    } finally {
+      setPendingKey(null);
     }
   };
 
   const onDelete = async (id: string): Promise<void> => {
-    await deleteTransaction(apiClient, id);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`delete:${id}`);
+    try {
+      await deleteTransaction(apiClient, id);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not delete this transaction. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   if (isLoading || !user) {
@@ -165,12 +185,18 @@ export default function TransactionsScreen() {
           value={amount}
           onChangeText={setAmount}
         />
-        <Button onPress={onAdd}>Add {type === "EXPENSE" ? "expense" : "income"}</Button>
+        <Button onPress={onAdd} disabled={pendingKey === "create"}>
+          {pendingKey === "create" ? "Adding…" : `Add ${type === "EXPENSE" ? "expense" : "income"}`}
+        </Button>
         {errorMessage && <ErrorState message={errorMessage} />}
       </Section>
 
       {transactions === null ? (
-        <LoadingState message="Loading transactions…" />
+        listError ? (
+          <ListLoadError message="Could not load transactions." onRetry={loadTransactions} />
+        ) : (
+          <LoadingState message="Loading transactions…" />
+        )
       ) : (
         <FlatList
           data={transactions}
@@ -186,8 +212,13 @@ export default function TransactionsScreen() {
                   · {accountName(item.accountId)} · {categoryName(item.categoryId)}
                 </Text>
               </Text>
-              <Pressable onPress={() => onDelete(item.id)}>
-                <Text style={styles.link}>Delete</Text>
+              <Pressable
+                onPress={() => onDelete(item.id)}
+                disabled={pendingKey === `delete:${item.id}`}
+              >
+                <Text style={styles.link}>
+                  {pendingKey === `delete:${item.id}` ? "Deleting…" : "Delete"}
+                </Text>
               </Pressable>
             </View>
           )}
@@ -217,8 +248,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  txnTextExpense: { color: colors.financialNegative },
-  txnTextIncome: { color: colors.financialPositive },
+  txnTextExpense: { color: colors.financialNegative, flexShrink: 1 },
+  txnTextIncome: { color: colors.financialPositive, flexShrink: 1 },
   txnMeta: { color: colors.textSecondary },
   link: { textDecorationLine: "underline", color: colors.financialNegative },
 });

@@ -14,6 +14,9 @@ import { colors, radius, spacing } from "@budget-terry/ui";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+import { GoalContributionHistory } from "../../components/GoalContributionHistory";
+import { GoalProgressRing } from "../../components/GoalProgressRing";
+import { ListLoadError } from "../../components/ListLoadError";
 import { LoadingState } from "../../components/LoadingState";
 import { Screen } from "../../components/Screen";
 import { Section } from "../../components/Section";
@@ -35,6 +38,7 @@ export default function GoalsScreen() {
   const [goals, setGoals] = useState<SavingsGoal[] | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [listError, setListError] = useState(false);
 
   const [name, setName] = useState("");
   const [targetAmount, setTargetAmount] = useState("");
@@ -58,16 +62,23 @@ export default function GoalsScreen() {
     setGoals(await listGoals(apiClient));
   };
 
+  const loadGoals = (): void => {
+    setListError(false);
+    refresh().catch(() => setListError(true));
+  };
+
   useEffect(() => {
     if (!user) {
       return;
     }
-    refresh().catch(() => setErrorMessage("Could not load goals."));
+    loadGoals();
     listAccounts(apiClient).then(setAccounts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const onCreate = async (): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey("create");
     try {
       await createGoal(apiClient, {
         name,
@@ -80,6 +91,8 @@ export default function GoalsScreen() {
       await refresh();
     } catch {
       setErrorMessage("Could not create the goal.");
+    } finally {
+      setPendingKey(null);
     }
   };
 
@@ -177,12 +190,18 @@ export default function GoalsScreen() {
           ))}
         </View>
 
-        <Button onPress={onCreate}>Add goal</Button>
+        <Button onPress={onCreate} disabled={pendingKey === "create"}>
+          {pendingKey === "create" ? "Adding…" : "Add goal"}
+        </Button>
         {errorMessage && <ErrorState message={errorMessage} />}
       </Section>
 
       {goals === null ? (
-        <LoadingState message="Loading goals…" />
+        listError ? (
+          <ListLoadError message="Could not load goals." onRetry={loadGoals} />
+        ) : (
+          <LoadingState message="Loading goals…" />
+        )
       ) : (
         <FlatList
           data={goals}
@@ -190,7 +209,6 @@ export default function GoalsScreen() {
           scrollEnabled={false}
           ListEmptyComponent={<EmptyState message="No goals yet." />}
           renderItem={({ item }) => {
-            const percentage = Math.min(100, item.percentageComplete);
             return (
               <View style={styles.goalCard}>
                 <View style={styles.goalHeader}>
@@ -220,19 +238,16 @@ export default function GoalsScreen() {
                   </View>
                 </View>
 
-                <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { width: `${percentage}%` }]} />
-                </View>
+                <GoalProgressRing
+                  percentageComplete={item.percentageComplete}
+                  remainingMinorUnits={item.remainingMinorUnits}
+                />
                 <Text style={styles.amountText}>
                   ${minorUnitsToDollars(item.savedMinorUnits)} of $
-                  {minorUnitsToDollars(item.targetAmountMinorUnits)} ({item.percentageComplete}%)
+                  {minorUnitsToDollars(item.targetAmountMinorUnits)}
+                  {item.suggestedMonthlyContributionMinorUnits !== null &&
+                    ` · suggested $${minorUnitsToDollars(item.suggestedMonthlyContributionMinorUnits)}/month`}
                 </Text>
-                {item.suggestedMonthlyContributionMinorUnits !== null && (
-                  <Text style={styles.amountText}>
-                    Suggested ${minorUnitsToDollars(item.suggestedMonthlyContributionMinorUnits)}
-                    /month
-                  </Text>
-                )}
 
                 {item.status === "ACTIVE" && (
                   <View style={styles.contributeRow}>
@@ -297,6 +312,11 @@ export default function GoalsScreen() {
                     </View>
                   </View>
                 )}
+
+                <View style={styles.historySection}>
+                  <Text style={styles.historyLabel}>Contribution history</Text>
+                  <GoalContributionHistory contributions={item.contributions} />
+                </View>
               </View>
             );
           }}
@@ -325,12 +345,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   goalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  goalName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
+  goalName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
   goalActions: { flexDirection: "row", gap: spacing.sm + 4 },
   payPicker: { gap: spacing.xs + 2, marginTop: spacing.xs },
-  barTrack: { height: 8, borderRadius: 4, backgroundColor: colors.background },
-  barFill: { height: 8, borderRadius: 4, backgroundColor: colors.accentPrimary },
   amountText: { fontSize: 12, color: colors.textSecondary },
+  historySection: { marginTop: spacing.xs, gap: spacing.xs },
+  historyLabel: { fontSize: 12, fontWeight: "600", color: colors.textSecondary },
   contributeRow: {
     flexDirection: "row",
     alignItems: "center",

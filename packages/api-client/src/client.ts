@@ -15,6 +15,14 @@ export interface ApiClientConfig {
 export interface TokenStorage {
   getRefreshToken(): Promise<string | null> | string | null;
   setRefreshToken(token: string | null): Promise<void> | void;
+  /**
+   * Separate slot from the refresh token — a "remember this device" trust
+   * (see docs/trusted-device-plan.md) deliberately survives logout, while
+   * the refresh token does not, so they can't share storage. Optional
+   * since not every TokenStorage implementation needs to support it.
+   */
+  getDeviceTrustToken?(): Promise<string | null> | string | null;
+  setDeviceTrustToken?(token: string | null): Promise<void> | void;
 }
 
 export interface RequestOptions {
@@ -83,13 +91,43 @@ export class ApiClient {
     await this.request<void>("/auth/login-code/request", { method: "POST", body: { email } });
   }
 
-  async verifyLoginCode(email: string, code: string): Promise<AuthenticatedUser> {
+  async verifyLoginCode(
+    email: string,
+    code: string,
+    rememberDevice?: boolean,
+  ): Promise<AuthenticatedUser> {
     const response = await this.request<AuthResponse>("/auth/login-code/verify", {
       method: "POST",
-      body: { email, code },
+      body: { email, code, rememberDevice },
     });
     await this.applyAuthResponse(response);
     return response.user;
+  }
+
+  /**
+   * Call as a fallback after restoreSession() finds no active session — a
+   * device with a live refresh token is already signed in and doesn't need
+   * this. Silently signs in using a previously "remembered" device trust
+   * token, or returns null (clearing the stored token if it was rejected)
+   * so the caller falls through to the normal login UI.
+   */
+  async tryDeviceLogin(): Promise<AuthenticatedUser | null> {
+    const deviceTrustToken = await this.tokenStorage?.getDeviceTrustToken?.();
+    if (!deviceTrustToken) {
+      return null;
+    }
+
+    try {
+      const response = await this.request<AuthResponse>("/auth/device-login", {
+        method: "POST",
+        body: { deviceTrustToken },
+      });
+      await this.applyAuthResponse(response);
+      return response.user;
+    } catch {
+      await this.tokenStorage?.setDeviceTrustToken?.(null);
+      return null;
+    }
   }
 
   async logout(): Promise<void> {
@@ -118,6 +156,11 @@ export class ApiClient {
       return null;
     }
     return this.request<AuthenticatedUser>("/auth/me");
+  }
+
+  /** Marks the one-time onboarding flow done, so it never shows again. */
+  async completeOnboarding(): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>("/auth/onboarding", { method: "PATCH" });
   }
 
   async request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
@@ -169,6 +212,12 @@ export class ApiClient {
   private async applyAuthResponse(response: AuthResponse): Promise<void> {
     this.accessToken = response.accessToken;
     await this.tokenStorage?.setRefreshToken(response.refreshToken);
+    // Only touch device-trust storage when the response actually carries
+    // one (verifyLoginCode with rememberDevice, or deviceLogin's rotation)
+    // — a normal login/register on a trusted device must not clear it.
+    if (response.deviceTrustToken) {
+      await this.tokenStorage?.setDeviceTrustToken?.(response.deviceTrustToken);
+    }
   }
 
   private async refreshAccessToken(): Promise<boolean> {

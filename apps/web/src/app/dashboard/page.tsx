@@ -4,12 +4,28 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardSummary } from "@budget-terry/types";
 import { getDashboardSummary } from "@budget-terry/api-client";
+import { colors } from "@budget-terry/ui";
 import { AppShell } from "../../components/AppShell";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { Section } from "../../components/Section";
+import { StatusDot } from "../../components/StatusDot";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
+
+const BILL_STATUS_COLOR: Record<string, string> = {
+  UPCOMING: colors.billUpcoming,
+  DUE_SOON: colors.billDueSoon,
+  DUE_TODAY: colors.billDueToday,
+  OVERDUE: colors.billOverdue,
+};
+
+const BILL_STATUS_LABEL: Record<string, string> = {
+  UPCOMING: "Upcoming",
+  DUE_SOON: "Due soon",
+  DUE_TODAY: "Due today",
+  OVERDUE: "Overdue",
+};
 
 function minorUnitsToDollars(value: number): string {
   return (value / 100).toLocaleString(undefined, {
@@ -93,6 +109,31 @@ export default function DashboardPage() {
                 </li>
               ))}
               {summary.categoryTotals.length === 0 && <EmptyState message="No spending yet." />}
+            </ul>
+          </Section>
+
+          <Section title="Upcoming bills">
+            <ul className="flex flex-col gap-2">
+              {summary.upcomingBills.map((entry) => (
+                <li
+                  key={entry.occurrenceId}
+                  className="flex items-center justify-between text-sm text-text-primary"
+                >
+                  <span className="flex items-center gap-2">
+                    {entry.name}
+                    <StatusDot
+                      color={BILL_STATUS_COLOR[entry.displayStatus] ?? colors.textSecondary}
+                      label={BILL_STATUS_LABEL[entry.displayStatus] ?? entry.displayStatus}
+                    />
+                  </span>
+                  <span className="tabular-nums">
+                    {entry.date} · ${minorUnitsToDollars(entry.amountMinorUnits)}
+                  </span>
+                </li>
+              ))}
+              {summary.upcomingBills.length === 0 && (
+                <EmptyState message="Nothing due in the next 7 days." />
+              )}
             </ul>
           </Section>
 

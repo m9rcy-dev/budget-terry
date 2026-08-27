@@ -21,6 +21,7 @@ function fakeConfigService(overrides: Partial<Env> = {}): ConfigService<Env, tru
     RESEND_API_KEY: "",
     MAIL_FROM: "Budget Terry <no-reply@budgetterry.local>",
     LOGIN_CODE_TTL_MINUTES: 10,
+    DEVICE_TRUST_TTL_DAYS: 90,
     ...overrides,
   };
 
@@ -55,6 +56,27 @@ describe("TokenService", () => {
     const expected = Date.now() + 24 * 60 * 60 * 1000;
 
     const generated = tokenService.generateRefreshToken();
+
+    expect(generated.expiresAt.getTime()).toBeGreaterThanOrEqual(expected - 5000);
+    expect(generated.expiresAt.getTime()).toBeLessThanOrEqual(expected + 5000);
+  });
+
+  it("generates a device trust token whose hash matches hashDeviceTrustToken for the same value", () => {
+    const tokenService = new TokenService(new JwtService({}), fakeConfigService());
+
+    const generated = tokenService.generateDeviceTrustToken();
+
+    expect(tokenService.hashDeviceTrustToken(generated.token)).toBe(generated.tokenHash);
+  });
+
+  it("sets the device trust token expiry according to DEVICE_TRUST_TTL_DAYS", () => {
+    const tokenService = new TokenService(
+      new JwtService({}),
+      fakeConfigService({ DEVICE_TRUST_TTL_DAYS: 1 }),
+    );
+    const expected = Date.now() + 24 * 60 * 60 * 1000;
+
+    const generated = tokenService.generateDeviceTrustToken();
 
     expect(generated.expiresAt.getTime()).toBeGreaterThanOrEqual(expected - 5000);
     expect(generated.expiresAt.getTime()).toBeLessThanOrEqual(expected + 5000);

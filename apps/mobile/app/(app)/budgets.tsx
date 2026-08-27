@@ -7,6 +7,7 @@ import { colors, radius, spacing } from "@budget-terry/ui";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+import { ListLoadError } from "../../components/ListLoadError";
 import { LoadingState } from "../../components/LoadingState";
 import { Screen } from "../../components/Screen";
 import { Section } from "../../components/Section";
@@ -64,6 +65,8 @@ export default function BudgetsScreen() {
   const [budgets, setBudgets] = useState<Budget[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [listError, setListError] = useState(false);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>("MONTHLY");
   const [mode, setMode] = useState<"overall" | "perCategory">("overall");
@@ -81,12 +84,18 @@ export default function BudgetsScreen() {
     setBudgets(await listBudgets(apiClient));
   };
 
+  const loadBudgets = (): void => {
+    setListError(false);
+    refresh().catch(() => setListError(true));
+  };
+
   useEffect(() => {
     if (!user) {
       return;
     }
-    refresh().catch(() => setErrorMessage("Could not load budgets."));
+    loadBudgets();
     listCategories(apiClient).then(setCategories);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const toggleCategory = (categoryId: string): void => {
@@ -99,6 +108,7 @@ export default function BudgetsScreen() {
 
   const onCreate = async (): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey("create");
     try {
       const today = new Date().toISOString().slice(0, 10);
       if (mode === "overall") {
@@ -125,12 +135,22 @@ export default function BudgetsScreen() {
       await refresh();
     } catch {
       setErrorMessage("Could not create the budget — check the amounts you entered.");
+    } finally {
+      setPendingKey(null);
     }
   };
 
   const onDelete = async (id: string): Promise<void> => {
-    await deleteBudget(apiClient, id);
-    await refresh();
+    setErrorMessage(null);
+    setPendingKey(`delete:${id}`);
+    try {
+      await deleteBudget(apiClient, id);
+      await refresh();
+    } catch {
+      setErrorMessage("Could not delete this budget. Please try again.");
+    } finally {
+      setPendingKey(null);
+    }
   };
 
   if (isLoading || !user) {
@@ -221,12 +241,18 @@ export default function BudgetsScreen() {
           </View>
         )}
 
-        <Button onPress={onCreate}>Create budget</Button>
+        <Button onPress={onCreate} disabled={pendingKey === "create"}>
+          {pendingKey === "create" ? "Creating…" : "Create budget"}
+        </Button>
         {errorMessage && <ErrorState message={errorMessage} />}
       </Section>
 
       {budgets === null ? (
-        <LoadingState message="Loading budgets…" />
+        listError ? (
+          <ListLoadError message="Could not load budgets." onRetry={loadBudgets} />
+        ) : (
+          <LoadingState message="Loading budgets…" />
+        )
       ) : (
         <FlatList
           data={budgets}
@@ -237,8 +263,13 @@ export default function BudgetsScreen() {
             <View style={styles.budgetCard}>
               <View style={styles.budgetHeader}>
                 <Text style={styles.budgetName}>{item.name ?? `${item.period} budget`}</Text>
-                <Pressable onPress={() => onDelete(item.id)}>
-                  <Text style={styles.link}>Delete</Text>
+                <Pressable
+                  onPress={() => onDelete(item.id)}
+                  disabled={pendingKey === `delete:${item.id}`}
+                >
+                  <Text style={styles.link}>
+                    {pendingKey === `delete:${item.id}` ? "Deleting…" : "Delete"}
+                  </Text>
                 </Pressable>
               </View>
 
@@ -292,7 +323,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   budgetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  budgetName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
+  budgetName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
   statusRow: { flexDirection: "row", justifyContent: "space-between" },
   statusLabel: { fontSize: 12, color: colors.textSecondary },
   barTrack: { height: 8, borderRadius: 4, backgroundColor: colors.background },

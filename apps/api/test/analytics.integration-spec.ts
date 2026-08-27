@@ -41,7 +41,7 @@ describe("analytics", () => {
     const account = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "Everyday", type: "EVERYDAY", currency: "NZD" })
+      .send({ name: "Everyday", type: "CHEQUE", currency: "NZD" })
       .expect(201);
     const secondAccount = await http()
       .post("/accounts")

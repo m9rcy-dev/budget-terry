@@ -36,6 +36,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("code-request");
   const [codeEmail, setCodeEmail] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
@@ -70,7 +71,7 @@ export default function LoginPage() {
   const onVerifyCode = async (values: CodeInput): Promise<void> => {
     setErrorMessage(null);
     try {
-      await loginWithCode(codeEmail, values.code);
+      await loginWithCode(codeEmail, values.code, rememberDevice);
       router.push("/dashboard");
     } catch (error) {
       setErrorMessage(
@@ -152,6 +153,14 @@ export default function LoginPage() {
                 {...codeForm.register("code")}
               />
             </Field>
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
+              <input
+                type="checkbox"
+                checked={rememberDevice}
+                onChange={(event) => setRememberDevice(event.target.checked)}
+              />
+              Remember this device — skip this step next time
+            </label>
             {errorMessage && <ErrorState message={errorMessage} />}
             {infoMessage && <p className="text-sm text-financial-positive">{infoMessage}</p>}
             <Button type="submit" disabled={codeForm.formState.isSubmitting}>

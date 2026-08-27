@@ -11,6 +11,7 @@ function buildAuthService() {
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
     category: {
       upsert: jest.fn(),
@@ -26,6 +27,11 @@ function buildAuthService() {
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
+    },
+    deviceTrust: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
     },
   };
   const passwordService = {
@@ -46,9 +52,16 @@ function buildAuthService() {
       expiresAt: new Date(Date.now() + 10 * 60_000),
     })),
     hashLoginCode: jest.fn((code: string) => `${code}-hash`),
+    generateDeviceTrustToken: jest.fn(() => ({
+      token: "device-trust-token",
+      tokenHash: "device-trust-token-hash",
+      expiresAt: new Date(Date.now() + 1000),
+    })),
+    hashDeviceTrustToken: jest.fn((token: string) => `${token}-hash`),
   };
   const mailService = {
     sendLoginCode: jest.fn(),
+    sendWelcomeEmail: jest.fn().mockResolvedValue(undefined),
   };
 
   const authService = new AuthService(
@@ -63,8 +76,8 @@ function buildAuthService() {
 
 describe("AuthService", () => {
   describe("register", () => {
-    it("creates a user, seeds default categories, and issues tokens", async () => {
-      const { authService, prisma, passwordService } = buildAuthService();
+    it("creates a user, seeds default categories, sends a welcome email, and issues tokens", async () => {
+      const { authService, prisma, passwordService, mailService } = buildAuthService();
       prisma.user.findUnique.mockResolvedValue(null);
       passwordService.hash.mockResolvedValue("hashed-password");
       prisma.user.create.mockResolvedValue({
@@ -87,13 +100,35 @@ describe("AuthService", () => {
         },
       });
       expect(prisma.category.upsert).toHaveBeenCalledTimes(15);
+      expect(mailService.sendWelcomeEmail).toHaveBeenCalledWith("new@example.com", "New User");
       expect(result.user).toEqual({
         id: "user-1",
         email: "new@example.com",
         displayName: "New User",
+        onboardingCompletedAt: null,
       });
       expect(result.accessToken).toBe("access-token");
       expect(result.refreshToken).toBe("refresh-token");
+    });
+
+    it("still succeeds even when the welcome email fails to send", async () => {
+      const { authService, prisma, passwordService, mailService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue(null);
+      passwordService.hash.mockResolvedValue("hashed-password");
+      prisma.user.create.mockResolvedValue({
+        id: "user-1",
+        email: "new@example.com",
+        displayName: "New User",
+      });
+      mailService.sendWelcomeEmail.mockRejectedValue(new Error("mail provider down"));
+
+      await expect(
+        authService.register({
+          email: "new@example.com",
+          password: "a-long-enough-password",
+          displayName: "New User",
+        }),
+      ).resolves.toMatchObject({ accessToken: "access-token" });
     });
 
     it("rejects registration when the email is already taken", async () => {
@@ -323,6 +358,147 @@ describe("AuthService", () => {
         authService.verifyLoginCode("person@example.com", "042817"),
       ).rejects.toBeInstanceOf(UnauthorizedException);
       expect(prisma.loginCode.update).not.toHaveBeenCalled();
+    });
+
+    it("does not create a device trust when rememberDevice is omitted", async () => {
+      const { authService, prisma, tokenService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "user-1",
+        email: "person@example.com",
+        displayName: "Person",
+      });
+      prisma.loginCode.findFirst.mockResolvedValue({
+        id: "code-1",
+        codeHash: "042817-hash",
+        attempts: 0,
+      });
+      tokenService.hashLoginCode.mockReturnValue("042817-hash");
+
+      const result = await authService.verifyLoginCode("person@example.com", "042817");
+
+      expect(prisma.deviceTrust.create).not.toHaveBeenCalled();
+      expect(result.deviceTrustToken).toBeUndefined();
+    });
+
+    it("creates a device trust and returns its token when rememberDevice is true", async () => {
+      const { authService, prisma, tokenService } = buildAuthService();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "user-1",
+        email: "person@example.com",
+        displayName: "Person",
+      });
+      prisma.loginCode.findFirst.mockResolvedValue({
+        id: "code-1",
+        codeHash: "042817-hash",
+        attempts: 0,
+      });
+      tokenService.hashLoginCode.mockReturnValue("042817-hash");
+
+      const result = await authService.verifyLoginCode("person@example.com", "042817", true);
+
+      expect(prisma.deviceTrust.create).toHaveBeenCalledWith({
+        data: {
+          userId: "user-1",
+          tokenHash: "device-trust-token-hash",
+          expiresAt: expect.any(Date),
+        },
+      });
+      expect(result.deviceTrustToken).toBe("device-trust-token");
+    });
+  });
+
+  describe("deviceLogin", () => {
+    it("rotates the device trust token and issues normal tokens for a valid, unexpired token", async () => {
+      const { authService, prisma, tokenService } = buildAuthService();
+      prisma.deviceTrust.findUnique.mockResolvedValue({
+        id: "trust-1",
+        userId: "user-1",
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 10000),
+      });
+      prisma.user.findUniqueOrThrow.mockResolvedValue({
+        id: "user-1",
+        email: "person@example.com",
+        displayName: "Person",
+      });
+
+      const result = await authService.deviceLogin("some-device-trust-token");
+
+      expect(prisma.deviceTrust.update).toHaveBeenCalledWith({
+        where: { id: "trust-1" },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(prisma.deviceTrust.create).toHaveBeenCalledWith({
+        data: {
+          userId: "user-1",
+          tokenHash: "device-trust-token-hash",
+          expiresAt: expect.any(Date),
+        },
+      });
+      expect(result.accessToken).toBe("access-token");
+      expect(result.deviceTrustToken).toBe("device-trust-token");
+    });
+
+    it("rejects an unknown device trust token", async () => {
+      const { authService, prisma } = buildAuthService();
+      prisma.deviceTrust.findUnique.mockResolvedValue(null);
+
+      await expect(authService.deviceLogin("unknown-token")).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("rejects a revoked device trust token", async () => {
+      const { authService, prisma } = buildAuthService();
+      prisma.deviceTrust.findUnique.mockResolvedValue({
+        id: "trust-1",
+        userId: "user-1",
+        revokedAt: new Date(),
+        expiresAt: new Date(Date.now() + 10000),
+      });
+
+      await expect(authService.deviceLogin("revoked-token")).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("rejects an expired device trust token", async () => {
+      const { authService, prisma } = buildAuthService();
+      prisma.deviceTrust.findUnique.mockResolvedValue({
+        id: "trust-1",
+        userId: "user-1",
+        revokedAt: null,
+        expiresAt: new Date(Date.now() - 10000),
+      });
+
+      await expect(authService.deviceLogin("expired-token")).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+  });
+
+  describe("completeOnboarding", () => {
+    it("stamps onboardingCompletedAt and returns the updated user", async () => {
+      const { authService, prisma } = buildAuthService();
+      prisma.user.update.mockResolvedValue({
+        id: "user-1",
+        email: "person@example.com",
+        displayName: "Person",
+        onboardingCompletedAt: new Date("2026-08-26T00:00:00.000Z"),
+      });
+
+      const result = await authService.completeOnboarding("user-1");
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: "user-1" },
+        data: { onboardingCompletedAt: expect.any(Date) },
+      });
+      expect(result).toEqual({
+        id: "user-1",
+        email: "person@example.com",
+        displayName: "Person",
+        onboardingCompletedAt: "2026-08-26T00:00:00.000Z",
+      });
     });
   });
 

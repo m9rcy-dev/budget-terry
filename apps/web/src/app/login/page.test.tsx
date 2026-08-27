@@ -46,9 +46,25 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
 
     await waitFor(() =>
-      expect(loginWithCodeMock).toHaveBeenCalledWith("person@example.com", "042817"),
+      expect(loginWithCodeMock).toHaveBeenCalledWith("person@example.com", "042817", false),
     );
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/dashboard"));
+  });
+
+  it("checking 'Remember this device' passes rememberDevice: true", async () => {
+    requestLoginCodeMock.mockResolvedValue(undefined);
+    loginWithCodeMock.mockResolvedValue(undefined);
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send code" }));
+    fireEvent.change(await screen.findByLabelText("Code"), { target: { value: "042817" } });
+    fireEvent.click(screen.getByText("Remember this device — skip this step next time"));
+    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+
+    await waitFor(() =>
+      expect(loginWithCodeMock).toHaveBeenCalledWith("person@example.com", "042817", true),
+    );
   });
 
   it("shows an invalid-code message when the API rejects the code", async () => {

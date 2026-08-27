@@ -12,6 +12,7 @@ import { colors, radius, spacing } from "@budget-terry/ui";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+import { ListLoadError } from "../../components/ListLoadError";
 import { LoadingState } from "../../components/LoadingState";
 import { Screen } from "../../components/Screen";
 import { Section } from "../../components/Section";
@@ -19,7 +20,7 @@ import { TextField } from "../../components/TextField";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
-const ACCOUNT_TYPES = ["EVERYDAY", "SAVINGS", "CREDIT_CARD", "CASH", "OTHER"] as const;
+const ACCOUNT_TYPES = ["CHEQUE", "SAVINGS", "CREDIT_CARD", "OTHER"] as const;
 
 export default function AccountsScreen() {
   const { user, isLoading } = useAuth();
@@ -27,8 +28,9 @@ export default function AccountsScreen() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState("");
-  const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("EVERYDAY");
+  const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("CHEQUE");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [listError, setListError] = useState(false);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,27 +39,34 @@ export default function AccountsScreen() {
     }
   }, [isLoading, user, router]);
 
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-    listAccounts(apiClient, { includeArchived: showArchived })
-      .then(setAccounts)
-      .catch(() => setErrorMessage("Could not load accounts."));
-  }, [user, showArchived]);
-
   const refresh = async (): Promise<void> => {
     setAccounts(await listAccounts(apiClient, { includeArchived: showArchived }));
   };
 
+  const loadAccounts = (): void => {
+    setListError(false);
+    refresh().catch(() => setListError(true));
+  };
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    loadAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, showArchived]);
+
   const onCreate = async (): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey("create");
     try {
       await createAccount(apiClient, { name, type, currency: "NZD" });
       setName("");
       await refresh();
     } catch {
       setErrorMessage("Could not create the account.");
+    } finally {
+      setPendingKey(null);
     }
   };
 
@@ -101,7 +110,9 @@ export default function AccountsScreen() {
             </Pressable>
           ))}
         </View>
-        <Button onPress={onCreate}>Add account</Button>
+        <Button onPress={onCreate} disabled={pendingKey === "create"}>
+          {pendingKey === "create" ? "Adding…" : "Add account"}
+        </Button>
         {errorMessage && <ErrorState message={errorMessage} />}
       </Section>
 
@@ -115,7 +126,11 @@ export default function AccountsScreen() {
       </View>
 
       {accounts === null ? (
-        <LoadingState message="Loading accounts…" />
+        listError ? (
+          <ListLoadError message="Could not load accounts." onRetry={loadAccounts} />
+        ) : (
+          <LoadingState message="Loading accounts…" />
+        )
       ) : (
         <FlatList
           data={accounts}
@@ -169,6 +184,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  rowText: { color: colors.textPrimary },
+  rowText: { color: colors.textPrimary, flexShrink: 1 },
   link: { textDecorationLine: "underline", color: colors.accentPrimary },
 });

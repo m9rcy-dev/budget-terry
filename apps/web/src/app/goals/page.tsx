@@ -17,6 +17,8 @@ import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { Input, Select } from "../../components/Field";
+import { GoalContributionHistory } from "../../components/GoalContributionHistory";
+import { GoalProgressRing } from "../../components/GoalProgressRing";
 import { LoadingState } from "../../components/LoadingState";
 import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
@@ -226,7 +228,6 @@ export default function GoalsPage() {
       ) : (
         <ul className="flex flex-col gap-4">
           {goals.map((goal) => {
-            const percentage = Math.min(100, goal.percentageComplete);
             return (
               <li key={goal.id} className="rounded-lg border border-border bg-surface p-4">
                 <div className="mb-2 flex items-center justify-between">
@@ -267,22 +268,14 @@ export default function GoalsPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <div className="flex justify-between text-xs text-text-secondary">
-                    <span className="tabular-nums">
-                      ${minorUnitsToDollars(goal.savedMinorUnits)} of $
-                      {minorUnitsToDollars(goal.targetAmountMinorUnits)}
-                    </span>
-                    <span className="tabular-nums">{goal.percentageComplete}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-background">
-                    <div
-                      className="h-2 rounded-full bg-accent-primary"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
+                <div className="flex flex-col gap-2">
+                  <GoalProgressRing
+                    percentageComplete={goal.percentageComplete}
+                    remainingMinorUnits={goal.remainingMinorUnits}
+                  />
                   <p className="tabular-nums text-xs text-text-secondary">
-                    ${minorUnitsToDollars(goal.remainingMinorUnits)} remaining
+                    ${minorUnitsToDollars(goal.savedMinorUnits)} of $
+                    {minorUnitsToDollars(goal.targetAmountMinorUnits)}
                     {goal.suggestedMonthlyContributionMinorUnits !== null &&
                       ` · suggested $${minorUnitsToDollars(goal.suggestedMonthlyContributionMinorUnits)}/month`}
                   </p>
@@ -347,16 +340,12 @@ export default function GoalsPage() {
                   </div>
                 )}
 
-                {goal.contributions.length > 0 && (
-                  <ul className="mt-3 flex flex-col gap-1 text-xs text-text-secondary">
-                    {goal.contributions.map((contribution) => (
-                      <li key={contribution.id} className="tabular-nums">
-                        {contribution.contributionDate.slice(0, 10)} — $
-                        {minorUnitsToDollars(contribution.amountMinorUnits)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <div className="mt-3">
+                  <p className="mb-1 text-xs font-medium text-text-secondary">
+                    Contribution history
+                  </p>
+                  <GoalContributionHistory contributions={goal.contributions} />
+                </div>
               </li>
             );
           })}

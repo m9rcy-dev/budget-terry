@@ -1,11 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { AuthResponse, AuthTokens, AuthenticatedUser } from "@budget-terry/types";
 import {
+  deviceLoginSchema,
   loginSchema,
   registerSchema,
   requestLoginCodeSchema,
   verifyLoginCodeSchema,
+  type DeviceLoginInput,
   type LoginInput,
   type RegisterInput,
   type RequestLoginCodeInput,
@@ -89,7 +91,20 @@ export class AuthController {
   verifyLoginCode(
     @Body(new ZodValidationPipe(verifyLoginCodeSchema)) body: VerifyLoginCodeInput,
   ): Promise<AuthResponse> {
-    return this.authService.verifyLoginCode(body.email, body.code);
+    return this.authService.verifyLoginCode(body.email, body.code, body.rememberDevice);
+  }
+
+  // Not guarded by JwtAuthGuard — same reasoning as /refresh: the device
+  // trust token in the body is what authenticates this request, and the
+  // caller has no access token yet (that's what this endpoint issues).
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post("device-login")
+  @HttpCode(HttpStatus.OK)
+  deviceLogin(
+    @Body(new ZodValidationPipe(deviceLoginSchema)) body: DeviceLoginInput,
+  ): Promise<AuthResponse> {
+    return this.authService.deviceLogin(body.deviceTrustToken);
   }
 
   @Public()
@@ -102,5 +117,10 @@ export class AuthController {
   @Get("me")
   me(@CurrentUser() user: AccessTokenPayload): Promise<AuthenticatedUser> {
     return this.authService.getCurrentUser(user.sub);
+  }
+
+  @Patch("onboarding")
+  completeOnboarding(@CurrentUser() user: AccessTokenPayload): Promise<AuthenticatedUser> {
+    return this.authService.completeOnboarding(user.sub);
   }
 }

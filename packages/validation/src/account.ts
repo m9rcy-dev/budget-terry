@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { currencyCodeSchema } from "./money";
 
-export const accountTypeSchema = z.enum(["EVERYDAY", "SAVINGS", "CREDIT_CARD", "CASH", "OTHER"]);
+export const accountTypeSchema = z.enum(["CHEQUE", "SAVINGS", "CREDIT_CARD", "OTHER"]);
 
 export const createAccountSchema = z.object({
   name: z.string().min(1).max(100),

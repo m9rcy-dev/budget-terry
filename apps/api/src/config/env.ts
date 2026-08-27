@@ -25,6 +25,9 @@ const envSchema = z.object({
   /** Login-code emails expire after this many minutes (plan: 6-digit
    * passwordless login). */
   LOGIN_CODE_TTL_MINUTES: z.coerce.number().int().positive().default(10),
+  /** How long a "remember this device" trust lasts — survives logout,
+   * unlike the refresh token (see docs/trusted-device-plan.md). */
+  DEVICE_TRUST_TTL_DAYS: z.coerce.number().int().positive().default(90),
 });
 
 export type Env = z.infer<typeof envSchema>;

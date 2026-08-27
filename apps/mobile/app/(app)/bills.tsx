@@ -15,6 +15,7 @@ import { colors, radius, spacing } from "@budget-terry/ui";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+import { ListLoadError } from "../../components/ListLoadError";
 import { LoadingState } from "../../components/LoadingState";
 import { Screen } from "../../components/Screen";
 import { Section } from "../../components/Section";
@@ -58,6 +59,7 @@ export default function BillsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [listError, setListError] = useState(false);
 
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
@@ -85,17 +87,24 @@ export default function BillsScreen() {
     setBills(await listBills(apiClient));
   };
 
+  const loadBills = (): void => {
+    setListError(false);
+    refresh().catch(() => setListError(true));
+  };
+
   useEffect(() => {
     if (!user) {
       return;
     }
-    refresh().catch(() => setErrorMessage("Could not load bills."));
+    loadBills();
     listCategories(apiClient).then(setCategories);
     listAccounts(apiClient).then(setAccounts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const onCreate = async (): Promise<void> => {
     setErrorMessage(null);
+    setPendingKey("create");
     try {
       await createBill(apiClient, {
         name,
@@ -112,6 +121,8 @@ export default function BillsScreen() {
       await refresh();
     } catch {
       setErrorMessage("Could not create the bill.");
+    } finally {
+      setPendingKey(null);
     }
   };
 
@@ -231,12 +242,18 @@ export default function BillsScreen() {
           ))}
         </View>
 
-        <Button onPress={onCreate}>Add bill</Button>
+        <Button onPress={onCreate} disabled={pendingKey === "create"}>
+          {pendingKey === "create" ? "Adding…" : "Add bill"}
+        </Button>
         {errorMessage && <ErrorState message={errorMessage} />}
       </Section>
 
       {bills === null ? (
-        <LoadingState message="Loading bills…" />
+        listError ? (
+          <ListLoadError message="Could not load bills." onRetry={loadBills} />
+        ) : (
+          <LoadingState message="Loading bills…" />
+        )
       ) : (
         <FlatList
           data={bills}
@@ -357,7 +374,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs + 2,
   },
   billHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  billName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
+  billName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
   occurrenceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   occurrenceInfo: {
     flexDirection: "row",

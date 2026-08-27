@@ -19,7 +19,7 @@ import { Section } from "../../components/Section";
 import { apiClient } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
-const ACCOUNT_TYPES = ["EVERYDAY", "SAVINGS", "CREDIT_CARD", "CASH", "OTHER"] as const;
+const ACCOUNT_TYPES = ["CHEQUE", "SAVINGS", "CREDIT_CARD", "OTHER"] as const;
 
 export default function AccountsPage() {
   const { user, isLoading } = useAuth();
@@ -27,7 +27,7 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState("");
-  const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("EVERYDAY");
+  const [type, setType] = useState<(typeof ACCOUNT_TYPES)[number]>("CHEQUE");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 

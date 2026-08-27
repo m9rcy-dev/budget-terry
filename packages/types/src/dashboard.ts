@@ -1,3 +1,4 @@
+import type { CalendarBillEntry } from "./calendar";
 import type { CategoryTotal, Transaction } from "./transaction";
 
 export interface DashboardSummary {
@@ -7,4 +8,6 @@ export interface DashboardSummary {
   netMinorUnits: number;
   categoryTotals: CategoryTotal[];
   recentTransactions: Transaction[];
+  /** Pending bill occurrences due within the next week, soonest first. */
+  upcomingBills: CalendarBillEntry[];
 }

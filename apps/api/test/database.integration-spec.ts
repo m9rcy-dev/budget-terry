@@ -55,7 +55,7 @@ describe("database plumbing", () => {
       },
     });
     const account = await db.prisma.account.create({
-      data: { userId: user.id, name: "Everyday", type: "EVERYDAY" },
+      data: { userId: user.id, name: "Everyday", type: "CHEQUE" },
     });
     const baseTransaction = {
       userId: user.id,
@@ -99,7 +99,7 @@ describe("database plumbing", () => {
       },
     });
     const account = await db.prisma.account.create({
-      data: { userId: user.id, name: "Everyday", type: "EVERYDAY" },
+      data: { userId: user.id, name: "Everyday", type: "CHEQUE" },
     });
     await db.prisma.transaction.create({
       data: {

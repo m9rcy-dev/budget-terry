@@ -11,6 +11,7 @@ import {
 import { colors, radius, spacing } from "@budget-terry/ui";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+import { ListLoadError } from "../../components/ListLoadError";
 import { LoadingState } from "../../components/LoadingState";
 import { Screen } from "../../components/Screen";
 import { StatusDot } from "../../components/StatusDot";
@@ -78,6 +79,7 @@ export default function CalendarScreen() {
   const [entries, setEntries] = useState<CalendarEntry[] | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [listError, setListError] = useState(false);
 
   // Set when a bill with no default account is paid — the entry whose row
   // should show an inline "which account?" picker instead of paying
@@ -119,11 +121,16 @@ export default function CalendarScreen() {
     setEntries(await getCalendarEntries(apiClient, rangeFrom, rangeTo));
   };
 
+  const loadEntries = (): void => {
+    setListError(false);
+    refresh().catch(() => setListError(true));
+  };
+
   useEffect(() => {
     if (!user) {
       return;
     }
-    refresh().catch(() => setErrorMessage("Could not load the calendar."));
+    loadEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, rangeFrom, rangeTo]);
 
@@ -248,7 +255,11 @@ export default function CalendarScreen() {
       {errorMessage && <ErrorState message={errorMessage} />}
 
       {entries === null ? (
-        <LoadingState message="Loading calendar…" />
+        listError ? (
+          <ListLoadError message="Could not load the calendar." onRetry={loadEntries} />
+        ) : (
+          <LoadingState message="Loading calendar…" />
+        )
       ) : (
         <>
           <View style={styles.weekdayRow}>
@@ -428,7 +439,13 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  header: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
   weekdayRow: { flexDirection: "row", marginTop: spacing.sm },
   weekdayLabel: {
     width: `${100 / 7}%`,
@@ -453,7 +470,7 @@ const styles = StyleSheet.create({
   dayNumberMuted: { color: colors.textSecondary },
   dotsRow: { flexDirection: "row", gap: 2, marginTop: 3, minHeight: 6 },
   dot: { width: 5, height: 5, borderRadius: 3 },
-  monthLabel: { fontSize: 16, fontWeight: "600", color: colors.textPrimary },
+  monthLabel: { fontSize: 16, fontWeight: "600", color: colors.textPrimary, flexShrink: 1 },
   navRow: { flexDirection: "row", gap: spacing.md },
   link: { textDecorationLine: "underline", color: colors.accentPrimary },
   linkMuted: { textDecorationLine: "underline", color: colors.textSecondary },

@@ -28,7 +28,7 @@ describe("goals", () => {
     const account = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "Everyday", type: "EVERYDAY", currency: "NZD" })
+      .send({ name: "Everyday", type: "CHEQUE", currency: "NZD" })
       .expect(201);
 
     return { accessToken, accountId: account.body.id };

@@ -1,3 +1,4 @@
+import type { BillsService } from "../bills/bills.service";
 import type { PrismaService } from "../prisma/prisma.service";
 import type { TransactionsService } from "../transactions/transactions.service";
 import { DashboardService } from "./dashboard.service";
@@ -12,13 +13,17 @@ function buildDashboardService() {
     getCategoryTotals: jest.fn(),
     findAllForUser: jest.fn(),
   };
+  const billsService = {
+    findOccurrencesDueInRange: jest.fn().mockResolvedValue([]),
+  };
 
   const service = new DashboardService(
     prisma as unknown as PrismaService,
     transactionsService as unknown as TransactionsService,
+    billsService as unknown as BillsService,
   );
 
-  return { service, prisma, transactionsService };
+  return { service, prisma, transactionsService, billsService };
 }
 
 describe("DashboardService", () => {
@@ -124,6 +129,92 @@ describe("DashboardService", () => {
     expect(transactionsService.findAllForUser).toHaveBeenCalledWith("user-1", {
       page: 1,
       pageSize: 5,
+    });
+  });
+
+  describe("upcomingBills", () => {
+    function occurrence(overrides: Record<string, unknown> = {}) {
+      return {
+        occurrenceId: "occ-1",
+        billId: "bill-1",
+        billName: "Power",
+        billAccountId: null,
+        dueDate: new Date("2026-01-05T00:00:00.000Z"),
+        amountMinorUnits: 5000,
+        currency: "NZD",
+        displayStatus: "DUE_SOON",
+        ...overrides,
+      };
+    }
+
+    it("maps pending occurrences from BillsService into CalendarBillEntry shape", async () => {
+      const { service, prisma, transactionsService, billsService } = buildDashboardService();
+      prisma.transaction.aggregate.mockResolvedValue({ _sum: { amountMinorUnits: 0 } });
+      transactionsService.getCategoryTotals.mockResolvedValue([]);
+      transactionsService.findAllForUser.mockResolvedValue({
+        items: [],
+        page: 1,
+        pageSize: 5,
+        total: 0,
+      });
+      billsService.findOccurrencesDueInRange.mockResolvedValue([occurrence()]);
+
+      const result = await service.getSummary("user-1", "2026-01-01", "2026-01-31");
+
+      expect(result.upcomingBills).toEqual([
+        {
+          type: "BILL",
+          date: "2026-01-05",
+          billId: "bill-1",
+          occurrenceId: "occ-1",
+          name: "Power",
+          accountId: null,
+          amountMinorUnits: 5000,
+          currency: "NZD",
+          displayStatus: "DUE_SOON",
+        },
+      ]);
+    });
+
+    it("excludes already PAID or SKIPPED occurrences", async () => {
+      const { service, prisma, transactionsService, billsService } = buildDashboardService();
+      prisma.transaction.aggregate.mockResolvedValue({ _sum: { amountMinorUnits: 0 } });
+      transactionsService.getCategoryTotals.mockResolvedValue([]);
+      transactionsService.findAllForUser.mockResolvedValue({
+        items: [],
+        page: 1,
+        pageSize: 5,
+        total: 0,
+      });
+      billsService.findOccurrencesDueInRange.mockResolvedValue([
+        occurrence({ occurrenceId: "occ-paid", displayStatus: "PAID" }),
+        occurrence({ occurrenceId: "occ-skipped", displayStatus: "SKIPPED" }),
+        occurrence({ occurrenceId: "occ-pending" }),
+      ]);
+
+      const result = await service.getSummary("user-1", "2026-01-01", "2026-01-31");
+
+      expect(result.upcomingBills).toHaveLength(1);
+      expect(result.upcomingBills[0]!.occurrenceId).toBe("occ-pending");
+    });
+
+    it("caps the list at 5 occurrences", async () => {
+      const { service, prisma, transactionsService, billsService } = buildDashboardService();
+      prisma.transaction.aggregate.mockResolvedValue({ _sum: { amountMinorUnits: 0 } });
+      transactionsService.getCategoryTotals.mockResolvedValue([]);
+      transactionsService.findAllForUser.mockResolvedValue({
+        items: [],
+        page: 1,
+        pageSize: 5,
+        total: 0,
+      });
+      billsService.findOccurrencesDueInRange.mockResolvedValue(
+        Array.from({ length: 8 }, (_, index) => occurrence({ occurrenceId: `occ-${index}` })),
+      );
+
+      const result = await service.getSummary("user-1", "2026-01-01", "2026-01-31");
+
+      expect(result.upcomingBills).toHaveLength(5);
     });
   });
 });

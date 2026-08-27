@@ -19,6 +19,16 @@ Database: PostgreSQL (Neon in production, Docker locally) — see ADR-002, ADR-0
 
 Web, mobile, and the API all speak REST/JSON and share request/response contracts via `packages/types` and `packages/validation`, rather than each redefining them.
 
+## Concepts
+
+- **Accounts** are the only place real money lives — every transaction (income or expense) belongs to exactly one account, and moves that account's balance. Types: `CHEQUE`, `SAVINGS`, `CREDIT_CARD`, `OTHER`.
+- **Categories** label what a transaction is for (Groceries, Rent, ...) — independent of which account it happened in.
+- **Budgets** are a spending target for a category (or overall) over a period (weekly/fortnightly/monthly), compared against matching transactions. They don't hold money themselves.
+- **Bills** forecast recurring outflows (rent, subscriptions) with due dates. Paying one creates a transaction, drawn from either the bill's default account or one chosen at pay-time.
+- **Goals** track progress toward a savings target. Contributions are transactions too, drawn from either the goal's default account or one chosen at contribution-time.
+
+New users are walked through creating their first account (mandatory — nothing else works without one) and are then offered an optional, skippable setup for a budget/bills/goal during a one-time onboarding flow.
+
 ## Prerequisites
 
 - Node.js (version pinned in [`.nvmrc`](.nvmrc))

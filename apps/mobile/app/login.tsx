@@ -10,7 +10,7 @@ import {
   type RequestLoginCodeInput,
 } from "@budget-terry/validation";
 import { Link, useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { colors, spacing } from "@budget-terry/ui";
 import { Button } from "../components/Button";
 import { ErrorState } from "../components/ErrorState";
@@ -33,6 +33,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("code-request");
   const [codeEmail, setCodeEmail] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
@@ -67,7 +68,7 @@ export default function LoginScreen() {
   const onVerifyCode = async (values: CodeInput): Promise<void> => {
     setErrorMessage(null);
     try {
-      await loginWithCode(codeEmail, values.code);
+      await loginWithCode(codeEmail, values.code, rememberDevice);
       router.replace("/");
     } catch (error) {
       setErrorMessage(
@@ -159,6 +160,16 @@ export default function LoginScreen() {
           {codeForm.formState.errors.code && (
             <ErrorState message={codeForm.formState.errors.code.message ?? "Invalid code."} />
           )}
+          <View style={styles.rememberRow}>
+            <Switch
+              value={rememberDevice}
+              onValueChange={setRememberDevice}
+              trackColor={{ true: colors.accentPrimary }}
+            />
+            <Text style={styles.rememberLabel}>
+              Remember this device — skip this step next time
+            </Text>
+          </View>
           {errorMessage && <ErrorState message={errorMessage} />}
           {infoMessage && <Text style={styles.info}>{infoMessage}</Text>}
           <Button
@@ -251,6 +262,8 @@ const styles = StyleSheet.create({
   subtitleEmphasis: { fontWeight: "600", color: colors.textPrimary },
   info: { fontSize: 13, color: colors.financialPositive },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  rememberRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs + 4 },
+  rememberLabel: { flex: 1, fontSize: 13, color: colors.textSecondary },
   link: {
     marginTop: spacing.sm,
     textAlign: "center",

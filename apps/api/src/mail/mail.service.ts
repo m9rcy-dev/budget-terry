@@ -19,4 +19,19 @@ export class MailService {
       html: `<p>Your Budget Terry login code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:4px;">${code}</p><p>It expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`,
     });
   }
+
+  /**
+   * Best-effort, not critical-path — a failed send here must never fail
+   * registration itself. Callers should catch, not propagate. No store/QR
+   * download link yet: the app isn't published anywhere (docs/deployment.md),
+   * so there's nothing real to link to today.
+   */
+  async sendWelcomeEmail(email: string, displayName: string): Promise<void> {
+    await this.provider.send({
+      to: email,
+      subject: "Welcome to Budget Terry",
+      text: `Hi ${displayName}, welcome to Budget Terry! To get started, add your first account — every transaction needs one to belong to. From there you can set up budgets, bills, and savings goals whenever you're ready.`,
+      html: `<p>Hi ${displayName}, welcome to Budget Terry!</p><p>To get started, add your first account — every transaction needs one to belong to. From there you can set up budgets, bills, and savings goals whenever you're ready.</p>`,
+    });
+  }
 }

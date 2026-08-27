@@ -30,7 +30,7 @@ describe("accounts", () => {
     const created = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "Everyday", type: "EVERYDAY", currency: "NZD" })
+      .send({ name: "Everyday", type: "CHEQUE", currency: "NZD" })
       .expect(201);
 
     expect(created.body.name).toBe("Everyday");
@@ -50,7 +50,7 @@ describe("accounts", () => {
     const created = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "Everyday", type: "EVERYDAY", currency: "NZD" })
+      .send({ name: "Everyday", type: "CHEQUE", currency: "NZD" })
       .expect(201);
 
     const updated = await http()
@@ -107,7 +107,7 @@ describe("accounts", () => {
     const unreferenced = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "Unused", type: "CASH", currency: "NZD" })
+      .send({ name: "Unused", type: "OTHER", currency: "NZD" })
       .expect(201);
 
     await http()
@@ -118,7 +118,7 @@ describe("accounts", () => {
     const referenced = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "In Use", type: "EVERYDAY", currency: "NZD" })
+      .send({ name: "In Use", type: "CHEQUE", currency: "NZD" })
       .expect(201);
 
     const me = await http()
@@ -152,7 +152,7 @@ describe("accounts", () => {
     const accountA = await http()
       .post("/accounts")
       .set("Authorization", `Bearer ${userA.accessToken}`)
-      .send({ name: "A's account", type: "EVERYDAY", currency: "NZD" })
+      .send({ name: "A's account", type: "CHEQUE", currency: "NZD" })
       .expect(201);
 
     await http()

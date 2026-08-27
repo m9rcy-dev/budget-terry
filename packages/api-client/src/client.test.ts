@@ -13,12 +13,20 @@ function emptyResponse(status: number): Response {
   return new Response(null, { status });
 }
 
-function createMemoryTokenStorage(initial: string | null = null): TokenStorage {
+function createMemoryTokenStorage(
+  initial: string | null = null,
+  initialDeviceTrustToken: string | null = null,
+): TokenStorage {
   let refreshToken = initial;
+  let deviceTrustToken = initialDeviceTrustToken;
   return {
     getRefreshToken: () => refreshToken,
     setRefreshToken: (token) => {
       refreshToken = token;
+    },
+    getDeviceTrustToken: () => deviceTrustToken,
+    setDeviceTrustToken: (token) => {
+      deviceTrustToken = token;
     },
   };
 }
@@ -158,6 +166,95 @@ describe("ApiClient", () => {
 
     expect(user.email).toBe("a@example.com");
     expect(await tokenStorage.getRefreshToken()).toBe("refresh-1");
+  });
+
+  it("verifyLoginCode sends rememberDevice and persists the returned device trust token", async () => {
+    const tokenStorage = createMemoryTokenStorage();
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(200, {
+        user: { id: "user-1", email: "a@example.com", displayName: "A" },
+        accessToken: "access-1",
+        refreshToken: "refresh-1",
+        deviceTrustToken: "trust-1",
+      }),
+    ) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
+
+    await client.verifyLoginCode("a@example.com", "042817", true);
+
+    const [, init] = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      email: "a@example.com",
+      code: "042817",
+      rememberDevice: true,
+    });
+    expect(await tokenStorage.getDeviceTrustToken!()).toBe("trust-1");
+  });
+
+  it("a plain login does not clear an existing device trust token", async () => {
+    const tokenStorage = createMemoryTokenStorage(null, "existing-trust");
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(200, {
+        user: { id: "user-1", email: "a@example.com", displayName: "A" },
+        accessToken: "access-1",
+        refreshToken: "refresh-1",
+      }),
+    ) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
+
+    await client.login({ email: "a@example.com", password: "hunter2000000" });
+
+    expect(await tokenStorage.getDeviceTrustToken!()).toBe("existing-trust");
+  });
+
+  it("tryDeviceLogin returns null immediately with no stored device trust token", async () => {
+    const tokenStorage = createMemoryTokenStorage();
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
+
+    await expect(client.tryDeviceLogin()).resolves.toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("tryDeviceLogin signs in and persists the rotated device trust token", async () => {
+    const tokenStorage = createMemoryTokenStorage(null, "trust-1");
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(200, {
+        user: { id: "user-1", email: "a@example.com", displayName: "A" },
+        accessToken: "access-1",
+        refreshToken: "refresh-1",
+        deviceTrustToken: "trust-2",
+      }),
+    ) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
+
+    const user = await client.tryDeviceLogin();
+
+    expect(user?.email).toBe("a@example.com");
+    expect(await tokenStorage.getDeviceTrustToken!()).toBe("trust-2");
+  });
+
+  it("tryDeviceLogin clears the stored token and returns null when the server rejects it", async () => {
+    const tokenStorage = createMemoryTokenStorage(null, "stale-trust");
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(401, { code: "UNAUTHORIZED", message: "Invalid or expired device trust." }),
+    ) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
+
+    await expect(client.tryDeviceLogin()).resolves.toBeNull();
+    expect(await tokenStorage.getDeviceTrustToken!()).toBeNull();
+  });
+
+  it("logout clears the refresh token but leaves a device trust token intact", async () => {
+    const tokenStorage = createMemoryTokenStorage("refresh-1", "trust-1");
+    const fetchImpl = vi.fn(async () => emptyResponse(204)) as unknown as typeof fetch;
+    const client = new ApiClient({ baseUrl: "https://api.example.com", fetchImpl, tokenStorage });
+    client.setAccessToken("access-1");
+
+    await client.logout();
+
+    expect(await tokenStorage.getRefreshToken()).toBeNull();
+    expect(await tokenStorage.getDeviceTrustToken!()).toBe("trust-1");
   });
 
   it("logout clears local token state and calls the API best-effort", async () => {

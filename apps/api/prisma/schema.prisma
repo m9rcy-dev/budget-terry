@@ -19,10 +19,9 @@ enum CurrencyCode {
 }
 
 enum AccountType {
-  EVERYDAY
+  CHEQUE
   SAVINGS
   CREDIT_CARD
-  CASH
   OTHER
 }
 
@@ -81,6 +80,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Null until the user finishes (or skips) the one-time onboarding flow.
+  // Backfilled to createdAt for pre-existing users so they're never forced
+  // through it retroactively (docs/onboarding-plan.md).
+  onboardingCompletedAt DateTime?
+
   accounts          Account[]
   categories        Category[]
   transactions      Transaction[]
@@ -91,6 +95,7 @@ model User {
   goalContributions GoalContribution[]
   refreshTokens     RefreshToken[]
   loginCodes        LoginCode[]
+  deviceTrusts      DeviceTrust[]
 
   @@map("users")
 }
@@ -138,6 +143,31 @@ model LoginCode {
 
   @@index([userId])
   @@map("login_codes")
+}
+
+// ---------------------------------------------------------------------------
+// DeviceTrust — "remember this device" for the login-code flow. Same
+// "only the hash is stored" and rotate-on-use principles as RefreshToken,
+// but deliberately a separate table: it must survive logout (which revokes
+// RefreshToken rows) since the whole point is skipping the emailed code on
+// a device that's already proven itself, even after signing out. Opt-in
+// only — created only when the user checks "remember this device" while
+// verifying a login code. See docs/trusted-device-plan.md.
+// ---------------------------------------------------------------------------
+
+model DeviceTrust {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_trusts")
 }
 
 // ---------------------------------------------------------------------------

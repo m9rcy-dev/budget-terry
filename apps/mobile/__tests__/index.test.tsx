@@ -35,6 +35,7 @@ describe("HomeScreen", () => {
       netMinorUnits: 0,
       categoryTotals: [],
       recentTransactions: [],
+      upcomingBills: [],
     });
   });
 
@@ -72,6 +73,7 @@ describe("HomeScreen", () => {
       netMinorUnits: 250000,
       categoryTotals: [],
       recentTransactions: [],
+      upcomingBills: [],
     });
 
     render(<HomeScreen />);
