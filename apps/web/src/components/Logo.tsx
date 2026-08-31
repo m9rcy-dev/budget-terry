@@ -9,7 +9,15 @@ export function Logo({ compact = false }: { compact?: boolean }) {
           <circle cx="90" cy="30" r="16" fill="#E7A48E" />
           <circle cx="87" cy="34" r="7" fill="#C97C63" />
           <ellipse cx="60" cy="66" rx="43" ry="39" fill="#E7A48E" />
-          <rect x="46" y="30" width="28" height="7" rx="3.5" fill="#285943" transform="rotate(-4 60 33)" />
+          <rect
+            x="46"
+            y="30"
+            width="28"
+            height="7"
+            rx="3.5"
+            fill="#285943"
+            transform="rotate(-4 60 33)"
+          />
           <circle cx="43" cy="60" r="5" fill="#202220" />
           <circle cx="77" cy="60" r="5" fill="#202220" />
           <ellipse cx="60" cy="81" rx="21" ry="16" fill="#C97C63" />
